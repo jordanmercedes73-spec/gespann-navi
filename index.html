@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
 <title>Gespann-Navi</title>
 <meta name="theme-color" content="#111113">
 <meta name="mobile-web-app-capable" content="yes">
@@ -232,6 +232,9 @@ body:not(.gps) .gpsonly{display:none!important}
   .p-head{padding-top:12px}
   #sheetToggle{display:block}
   #panel.collapsed .p-body{display:none}
+  #panel.typing{max-height:100%;top:0;border-radius:0}
+  #panel.typing .p-head{display:none}
+  #panel.typing .p-body{padding-bottom:60vh}
   #panel.collapsed .tabs{margin-bottom:max(0px,env(safe-area-inset-bottom,0px))}
   body.sim #panel{display:none}
   .mcard .main{grid-template-columns:52px 1fr}
@@ -263,7 +266,7 @@ body:not(.gps) .gpsonly{display:none!important}
         <div class="brand-mark" aria-hidden="true">
           <svg width="28" height="19" viewBox="0 0 26 18"><rect x="1" y="5" width="8" height="8" rx="1.5" fill="#140b04"/><rect x="11" y="2" width="14" height="11" rx="2" fill="#140b04"/><line x1="9" y1="11" x2="11" y2="11" stroke="#140b04" stroke-width="1.6"/><circle cx="4" cy="14.5" r="2.2" fill="#140b04" stroke="#d9772f" stroke-width="1"/><circle cx="18" cy="14.5" r="2.2" fill="#140b04" stroke="#d9772f" stroke-width="1"/></svg>
         </div>
-        <div><h1>Gespann<span>-Navi</span></h1><small>Routen für Pkw mit Wohnwagen · <span id="appVersion">Version 7</span></small></div>
+        <div><h1>Gespann<span>-Navi</span></h1><small>Routen für Pkw mit Wohnwagen · <span id="appVersion">Version 8</span></small></div>
         <button id="sheetToggle" aria-label="Planung ein- oder ausklappen"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 15l6-6 6 6"/></svg></button>
       </div>
       <div class="tabs" role="tablist">
@@ -592,28 +595,37 @@ function renderWps(){
 function attachSuggest(inp,list,i){
   let t=null,items=[],sel=-1,ctl=null;
   const close=()=>{list.hidden=true;sel=-1};
+  inp.addEventListener("focus",()=>{ if(!isMobile())return; $("#panel").classList.add("typing"); collapseSheet(false); setTimeout(()=>inp.scrollIntoView({block:"start",behavior:"smooth"}),250); });
+  inp.addEventListener("blur",()=>setTimeout(()=>{ if(!document.activeElement||!document.activeElement.closest(".wp"))$("#panel").classList.remove("typing") },200));
+  const search=async()=>{
+    const q=inp.value.trim(); if(q.length<2)return [];
+    ctl?.abort(); ctl=new AbortController();
+    const c=map?map.getCenter():{lat:46,lng:12};
+    const r=await fetch(`${PHOTON}?q=${encodeURIComponent(q)}&lang=de&limit=6&lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}`,{signal:ctl.signal});
+    const j=await r.json();
+    items=j.features.map(f=>{const p=f.properties;const name=p.name||[p.street,p.housenumber].filter(Boolean).join(" ");const sub=[p.street&&p.name?[p.street,p.housenumber].filter(Boolean).join(" "):null,[p.postcode,p.city||p.county].filter(Boolean).join(" "),p.country].filter(Boolean).join(", ");return{label:[name,p.city&&p.city!==name?p.city:null,p.country].filter(Boolean).join(", "),name,sub,lon:f.geometry.coordinates[0],lat:f.geometry.coordinates[1]}});
+    list.innerHTML="";
+    items.forEach((it,k)=>{const li=el("li",{},it.name||it.label);li.append(el("small",{},it.sub));li.addEventListener("pointerdown",e=>{e.preventDefault();choose(k)});list.append(li)});
+    list.hidden=!items.length;
+    if(!items.length){list.innerHTML="<li>Nichts gefunden. Anders schreiben, z. B. mit Ort oder Land.</li>";list.hidden=false}
+    return items;
+  };
   inp.addEventListener("input",()=>{
-    clearTimeout(t); const q=inp.value.trim(); if(q.length<3){close();return}
-    t=setTimeout(async()=>{
-      try{
-        ctl?.abort(); ctl=new AbortController();
-        const c=map?map.getCenter():{lat:46,lng:12};
-        const r=await fetch(`${PHOTON}?q=${encodeURIComponent(q)}&lang=de&limit=6&lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}`,{signal:ctl.signal});
-        const j=await r.json();
-        items=j.features.map(f=>{const p=f.properties;const name=p.name||[p.street,p.housenumber].filter(Boolean).join(" ");const sub=[p.street&&p.name?[p.street,p.housenumber].filter(Boolean).join(" "):null,[p.postcode,p.city||p.county].filter(Boolean).join(" "),p.country].filter(Boolean).join(", ");return{label:[name,p.city&&p.city!==name?p.city:null,p.country].filter(Boolean).join(", "),name,sub,lon:f.geometry.coordinates[0],lat:f.geometry.coordinates[1]}});
-        list.innerHTML="";
-        items.forEach((it,k)=>{const li=el("li",{},it.name||it.label);li.append(el("small",{},it.sub));li.onmousedown=e=>{e.preventDefault();choose(k)};list.append(li)});
-        list.hidden=!items.length;
-      }catch(e){if(e.name!=="AbortError"){list.innerHTML="<li>Suche gerade nicht erreichbar</li>";list.hidden=false}}
-    },350);
+    clearTimeout(t); if(WPS[i]&&inp.value!==WPS[i].label){WPS[i]=null;updateMarkers()}
+    if(inp.value.trim().length<3){close();return}
+    t=setTimeout(()=>search().catch(e=>{if(e.name!=="AbortError"){list.innerHTML="<li>Suche gerade nicht erreichbar. Internet prüfen.</li>";list.hidden=false}}),350);
   });
-  const choose=k=>{const it=items[k];if(!it)return;WPS[i]={label:it.label,lat:it.lat,lon:it.lon};inp.value=it.label;close();updateMarkers();markRouteStale();map?.flyTo({center:[it.lon,it.lat],zoom:Math.max(map.getZoom(),8)})};
+  // Getippten Text ohne Antippen eines Vorschlags trotzdem übernehmen (erster Treffer)
+  inp._resolve=async()=>{ if(WPS[i]||inp.value.trim().length<2)return; clearTimeout(t); const r=await search().catch(()=>[]); if(r.length)choose(0); };
+  const choose=k=>{const it=items[k];if(!it)return;WPS[i]={label:it.label,lat:it.lat,lon:it.lon};inp.value=it.label;close();updateMarkers();markRouteStale();setStatus("");map?.flyTo({center:[it.lon,it.lat],zoom:Math.max(map.getZoom(),8)})};
   inp.addEventListener("keydown",e=>{
     if(list.hidden)return;
     if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();sel=(sel+(e.key==="ArrowDown"?1:-1)+items.length)%items.length;[...list.children].forEach((li,k)=>li.classList.toggle("on",k===sel))}
-    else if(e.key==="Enter"){e.preventDefault();choose(sel<0?0:sel)}
     else if(e.key==="Escape")close();
   });
+  inp.addEventListener("keydown",async e=>{ if(e.key!=="Enter")return; e.preventDefault();
+    if(!list.hidden&&items.length){choose(sel<0?0:sel)} else {await inp._resolve()}
+    if(WPS.every(Boolean)){inp.blur();calcRoute()} else { const nx=WPS.findIndex(w=>!w); if(nx>=0)$("#wp"+nx)?.focus() } });
   inp.addEventListener("blur",()=>setTimeout(close,150));
 }
 function renderPresets(){
@@ -1339,7 +1351,11 @@ function collapseSheet(c){$("#panel").classList.toggle("collapsed",c);$("#sheetT
 function showTab(t){for(const b of document.querySelectorAll(".tab"))b.setAttribute("aria-selected",String(b.dataset.tab===t));for(const x of ["route","stops","gespann"])$("#body-"+x).hidden=t!==x;if(isMobile())collapseSheet(false)}
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
 $("#sheetToggle").onclick=()=>collapseSheet(!$("#panel").classList.contains("collapsed"));
-$("#calc").onclick=()=>calcRoute();
+$("#calc").onclick=async()=>{
+  for(const inp of document.querySelectorAll("#wps input"))if(inp._resolve)await inp._resolve();
+  $("#panel").classList.remove("typing");
+  calcRoute();
+};
 $("#addVia").onclick=()=>{if(WPS.length>=6)return;WPS.splice(WPS.length-1,0,null);renderWps();$("#wp"+(WPS.length-2)).focus()};
 $("#swap").onclick=()=>{WPS.reverse();renderWps();updateMarkers();markRouteStale()};
 ["optToll","optFerry","optHwy"].forEach(id=>$("#"+id).onchange=markRouteStale);
