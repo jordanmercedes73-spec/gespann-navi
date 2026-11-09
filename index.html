@@ -257,7 +257,7 @@ body:not(.gps) .gpsonly{display:none!important}
       </div>
       <div class="tabs" role="tablist">
         <button class="tab" role="tab" id="tab-route" aria-selected="true" data-tab="route">Route</button>
-        <button class="tab" role="tab" id="tab-stops" aria-selected="false" data-tab="stops">Stopps<span class="cnt" id="stopsCnt" hidden></span></button>
+        <button class="tab" role="tab" id="tab-stops" aria-selected="false" data-tab="stops">Camping<span class="cnt" id="stopsCnt" hidden></span></button>
         <button class="tab" role="tab" id="tab-gespann" aria-selected="false" data-tab="gespann">Gespann</button>
       </div>
     </div>
@@ -290,7 +290,7 @@ body:not(.gps) .gpsonly{display:none!important}
     </div>
 
     <div class="p-body" id="body-stops" hidden>
-      <div id="stopsBody"><p class="note">Berechne zuerst eine Route. Danach erscheinen hier Campingplätze am Ziel, Übernachtungsplätze unterwegs und Rastplätze an der Strecke.</p></div>
+      <div id="stopsBody"><p class="note">Gib zuerst ein Ziel ein und berechne die Route. Danach erscheinen hier die Campingplätze rund um dein Ziel.</p></div>
     </div>
 
     <div class="p-body" id="body-gespann" hidden>
@@ -415,10 +415,7 @@ const store = {
 };
 let G = structuredClone(store.get("gespann",DEFAULT_G));
 G.zug = Object.assign({},DEFAULT_G.zug,G.zug); G.ww = Object.assign({},DEFAULT_G.ww,G.ww);
-let WPS = [
-  {label:"München, Marienplatz",lat:48.1374,lon:11.5755},
-  {label:"Rovinj (Istrien), Kroatien",lat:45.0812,lon:13.6387}
-];
+let WPS = [null,null];   // Start und Ziel sind beim Öffnen leer
 let R = null;          // Routenmodell
 let pickIdx = null;    // Wegpunkt, der per Karte gesetzt wird
 const $ = s => document.querySelector(s);
@@ -610,7 +607,7 @@ function attachSuggest(inp,list,i){
 }
 function renderPresets(){
   const box=$("#presets");
-  PRESETS.forEach(p=>{const b=el("button",{class:"chip"},p.n);b.onclick=()=>{WPS[WPS.length-1]={label:p.n,lat:p.lat,lon:p.lon};renderWps();updateMarkers();calcRoute()};box.append(b)});
+  PRESETS.forEach(p=>{const b=el("button",{class:"chip"},p.n);b.onclick=()=>{WPS[WPS.length-1]={label:p.n,lat:p.lat,lon:p.lon};renderWps();updateMarkers();if(WPS.every(Boolean))calcRoute();else{setStatus("Ziel gesetzt. Jetzt noch den Start eingeben oder auf den Pfeil-Knopf für deinen Standort tippen.");$("#wp0")?.focus()}};box.append(b)});
 }
 
 /* ---------- Karte ---------- */
@@ -655,7 +652,6 @@ function initMap(){
     map.on("mouseenter","pois",()=>map.getCanvas().style.cursor="pointer");
     map.on("mouseleave","pois",()=>map.getCanvas().style.cursor="");
     updateMarkers();
-    calcRoute();
   });
   map.on("click",e=>{
     if(pickIdx===null)return;
@@ -684,7 +680,7 @@ async function valhalla(costing,opts,locs){
   return j.trip;
 }
 async function calcRoute(opt={}){
-  if(WPS.some(w=>!w)){setStatus("Bitte Start und Ziel wählen.",true);return false}
+  if(WPS.some(w=>!w)){setStatus(!WPS[0]&&!WPS[WPS.length-1]?"Bitte Start und Ziel eingeben.":!WPS[0]?"Bitte noch den Start eingeben oder auf den Pfeil-Knopf für deinen Standort tippen.":"Bitte noch das Ziel eingeben.",true);return false}
   if(!opt.keepNav) stopDrive();
   const g=gesamt();
   const common={use_tolls:$("#optToll").checked?0:0.5,use_ferry:$("#optFerry").checked?0.5:0,use_highways:$("#optHwy").checked?1:0.4};
@@ -886,7 +882,7 @@ function renderGrades(){
 /* ---------- Camping- und Rastplätze ---------- */
 async function overpass(q){
   for(const url of OVERPASS){
-    const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),25000);
+    const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),20000);
     try{const r=await fetch(url,{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"},signal:ctl.signal});
       if(!r.ok)throw new Error(r.status);const j=await r.json();clearTimeout(to);if(j&&j.elements)return j.elements}
     catch(e){clearTimeout(to)}
@@ -898,52 +894,36 @@ async function photonTag(q,tags,lat,lon,d,limit){
   const u=`${PHOTON}?q=${encodeURIComponent(q)}${tg}&lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&limit=${limit}&bbox=${(lon-d).toFixed(4)},${(lat-d).toFixed(4)},${(lon+d).toFixed(4)},${(lat+d).toFixed(4)}`;
   try{const j=await (await fetch(u)).json();return j.features.map(f=>({id:"p"+f.properties.osm_type+f.properties.osm_id,lon:f.geometry.coordinates[0],lat:f.geometry.coordinates[1],tags:{name:f.properties.name,[f.properties.osm_key]:f.properties.osm_value,"addr:city":f.properties.city}}))}catch(e){return[]}
 }
-async function photonStops(RR){
-  const z=WPS[WPS.length-1],out=[],jobs=[];
-  for(const q of ["camping","kamp","campeggio","autocamp","campingplatz"]) jobs.push(()=>photonTag(q,["tourism:camp_site"],z.lat,z.lon,0.22,40));
-  for(let s=25000;s<RR.len-10000;s+=50000){const p=posAt(s,RR);jobs.push(()=>photonTag("camping",["tourism:camp_site"],p[1],p[0],0.05,10))}
-  const WORDS={DE:["rast","parkplatz"],AT:["rast","parkplatz"],CH:["rast"],IT:["area","autogrill"],SI:["počivališče","postajališče"],HR:["odmorište"],FR:["aire"],HU:["pihenő"]};
-  for(let s=0;s<RR.len;s+=30000){const p=posAt(s,RR);for(const q of WORDS[RR.cc[idxAt(s,RR)]]||["rast"])jobs.push(()=>photonTag(q,["highway:rest_area","highway:services"],p[1],p[0],0.16,12))}
-  for(let i=0;i<jobs.length&&RR===R;i+=3){const r=await Promise.all(jobs.slice(i,i+3).map(f=>f()));r.forEach(a=>out.push(...a));await new Promise(ok=>setTimeout(ok,120))}
+let CAMP_RAD = +store.get("campRad",20) || 20;   // Suchradius in km rund ums Ziel
+async function photonCamps(z,rad){
+  const d=rad/111,out=[];
+  for(const q of ["camping","kamp","campeggio","autocamp","campingplatz"]){out.push(...await photonTag(q,["tourism:camp_site"],z.lat,z.lon,d,50));await new Promise(ok=>setTimeout(ok,150))}
   return out;
 }
+/* Campingplätze nur rund ums Ziel suchen: eine kleine, schnelle Abfrage */
 async function loadStops(RR){
   renderStops(RR,"loading");
-  const simp=simplify(RR.pts,80),parts=[];
-  for(let i=0;i<simp.length-1;i+=40){
-    const c=simp.slice(i,i+41);let x0=180,y0=90,x1=-180,y1=-90;for(const [x,y] of c){x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)}
-    const pad=0.05,bb=`${(y0-pad).toFixed(4)},${(x0-pad).toFixed(4)},${(y1+pad).toFixed(4)},${(x1+pad).toFixed(4)}`,ll=c.map(([x,y])=>`${y.toFixed(5)},${x.toFixed(5)}`).join(",");
-    parts.push(`nwr["highway"~"^(rest_area|services)$"](${bb})(around:150,${ll});`,`nwr["tourism"="camp_site"](${bb})(around:3000,${ll});`);
-  }
-  const z=WPS[WPS.length-1];
-  parts.push(`nwr["tourism"="camp_site"](around:20000,${z.lat.toFixed(5)},${z.lon.toFixed(5)});`);
-  let els=await overpass(`[out:json][timeout:60];(${parts.join("")});out center tags qt;`), src="OpenStreetMap über Overpass";
+  const z=WPS[WPS.length-1],rad=CAMP_RAD;
+  let els=await overpass(`[out:json][timeout:25];nwr["tourism"="camp_site"](around:${rad*1000},${z.lat.toFixed(5)},${z.lon.toFixed(5)});out center tags;`), src="OpenStreetMap über Overpass";
   if(RR!==R)return;
-  if(!els){els=await photonStops(RR);src="OpenStreetMap über die Photon-Suche (nur Plätze mit Namen)";}
+  if(!els){els=await photonCamps(z,rad);src="OpenStreetMap über die Photon-Suche (nur Plätze mit Namen)";}
   if(RR!==R)return;
   const zz=[z.lon,z.lat],seen=new Set(),items=[];
   for(const e of els){
     const t=e.tags||{},lat=e.lat??e.center?.lat,lon=e.lon??e.center?.lon;if(lat==null)continue;
     const key=e.type?e.type+e.id:e.id;if(seen.has(key))continue;seen.add(key);
-    const kind=t.tourism==="camp_site"?"camp":t.highway==="services"?"services":t.highway==="rest_area"?"rest":null;if(!kind)continue;
-    if(kind==="camp"&&(t.caravans==="no"||t.tents==="only"))continue;
-    const pr=projectFast(RR,lon,lat),dz=hav([lon,lat],zz);
-    const it={kind,lat,lon,tags:t,name:t.name||t.operator||(kind==="camp"?"Campingplatz":kind==="services"?"Raststätte":"Rastplatz"),s:pr.s,off:pr.lat,dz};
-    if(kind==="camp"){ if(dz<=20000)it.grp="ziel"; else if(pr.lat<=3500&&pr.s<RR.len-15000)it.grp="weg"; else continue; }
-    else { if(pr.lat>250)continue; it.grp="rast"; }
-    items.push(it);
+    if(t.tourism!=="camp_site"||t.caravans==="no"||t.tents==="only")continue;
+    const dz=hav([lon,lat],zz);if(dz>rad*1000)continue;
+    items.push({kind:"camp",grp:"ziel",lat,lon,tags:t,name:t.name||t.operator||"Campingplatz",dz});
   }
-  // Rastplätze: doppelte Einträge (beide Fahrtrichtungen, Fläche und Punkt) zusammenfassen
-  const norm=s=>s.toLowerCase().replace(/\b(nord|süd|sud|ost|west|north|south|east|est|ovest|sever|jug|istok|zapad|links|rechts)\b/g,"").replace(/[^a-zäöüčćšžđ]/g,"");
-  const rast=items.filter(x=>x.grp==="rast").sort((a,b)=>a.s-b.s),keep=[];
-  for(const x of rast){const p=keep.find(k=>Math.abs(k.s-x.s)<(x.tags.name&&k.tags.name&&norm(k.name)===norm(x.name)?1500:400));if(p){if(x.kind==="services")p.kind="services";if(!p.tags.name&&x.tags.name){p.name=x.name;p.tags=x.tags}}else keep.push(x)}
-  // Campingplätze: Rezeption, Fläche und Eingang desselben Platzes nur einmal zeigen
+  // Rezeption, Fläche und Eingang desselben Platzes nur einmal zeigen
+  const norm=s=>s.toLowerCase().replace(/[^a-zäöüčćšžđ]/g,"");
   const camps=[];
-  for(const x of items.filter(x=>x.grp!=="rast")){const p=camps.find(k=>hav([k.lon,k.lat],[x.lon,x.lat])<(norm(k.name).slice(-6)===norm(x.name).slice(-6)?1200:250));if(p){if(Object.keys(x.tags).length>Object.keys(p.tags).length){const keepName=p.tags.name&&!x.tags.name;Object.assign(p,{tags:x.tags,lat:x.lat,lon:x.lon});if(!keepName)p.name=x.name}}else camps.push(x)}
-  const S={src,ziel:camps.filter(x=>x.grp==="ziel").sort((a,b)=>a.dz-b.dz),weg:camps.filter(x=>x.grp==="weg").sort((a,b)=>a.s-b.s),rast:keep};
-  S.all=[...S.ziel,...S.weg,...S.rast];S.all.forEach((x,i)=>x.id=i);
+  for(const x of items.sort((a,b)=>a.dz-b.dz)){const p=camps.find(k=>hav([k.lon,k.lat],[x.lon,x.lat])<(norm(k.name).slice(-6)===norm(x.name).slice(-6)?1200:250));if(p){p.tags=Object.assign({},x.tags,p.tags);if(!p.tags.name&&x.tags.name)p.name=x.name}else camps.push(x)}
+  const S={src,rad,ziel:camps,weg:[],rast:[]};
+  S.all=[...S.ziel];S.all.forEach((x,i)=>x.id=i);
   RR.stops=S;
-  map.getSource("pois").setData({type:"FeatureCollection",features:S.all.map(x=>({type:"Feature",geometry:{type:"Point",coordinates:[x.lon,x.lat]},properties:{id:x.id,kind:x.kind,name:x.name,rank:x.kind==="camp"?1:2}}))});
+  map.getSource("pois").setData({type:"FeatureCollection",features:S.all.map(x=>({type:"Feature",geometry:{type:"Point",coordinates:[x.lon,x.lat]},properties:{id:x.id,kind:x.kind,name:x.name,rank:1}}))});
   renderStops(RR);
 }
 function stopSub(x){
@@ -958,16 +938,18 @@ function stopSub(x){
 function stopTags(x){const t=x.tags,o=[];if(t.caravans==="yes")o.push(`<span class="tag yes">Wohnwagen erlaubt</span>`);if(t.power_supply==="yes")o.push(`<span class="tag">Strom</span>`);if(t.toilets==="yes")o.push(`<span class="tag">WC</span>`);if(t.fuel==="yes")o.push(`<span class="tag">Tankstelle</span>`);return o.join("")}
 function renderStops(RR,state){
   if(RR!==R)return;
-  const box=$("#stopsBody"),cnt=$("#stopsCnt");
-  if(state==="loading"){box.innerHTML=`<p class="note">Camping- und Rastplätze entlang der Route werden gesucht …</p>`;cnt.hidden=true;return}
+  const box=$("#stopsBody"),cnt=$("#stopsCnt"),z=WPS[WPS.length-1];
+  const radBtns=`<div class="chips" style="align-items:center"><span class="note">Umkreis:</span>${[10,20,40].map(r=>`<button class="chip" data-rad="${r}" ${r===CAMP_RAD?'style="border-color:var(--sign);background:var(--sign);color:var(--sign-ink)"':""}>${r} km</button>`).join("")}</div>`;
+  const wire=()=>box.querySelectorAll("[data-rad]").forEach(b=>b.onclick=()=>{CAMP_RAD=+b.dataset.rad;store.set("campRad",CAMP_RAD);loadStops(R).catch(()=>{})});
+  if(state==="loading"){box.innerHTML=`<div style="display:flex;flex-direction:column;gap:12px">${radBtns}<p class="note">Campingplätze rund um ${esc(z?.label||"das Ziel")} werden gesucht …</p></div>`;cnt.hidden=true;wire();return}
   const S=RR.stops;cnt.hidden=false;cnt.textContent=S.all.length;
-  const ico=k=>k==="camp"?`<span class="ico camp" aria-hidden="true"><svg width="16" height="14" viewBox="0 0 16 14"><path d="M8 0L16 14H0z" fill="#fff"/><path d="M8 7l3 7H5z" fill="#2f7d3a"/></svg></span>`:`<span class="ico ${k}" aria-hidden="true">${k==="rest"?"P":`<svg width="14" height="16" viewBox="0 0 14 16"><rect x="1" y="1" width="8" height="14" fill="#fff"/><rect x="3" y="3" width="4" height="4" fill="#1b4d9b"/><path d="M9 4l4 2v7" stroke="#fff" stroke-width="1.6" fill="none"/></svg>`}</span>`;
-  const list=(arr,btn)=>arr.length?`<ul class="slist">${arr.map(x=>`<li data-id="${x.id}">${ico(x.kind)}<div><div class="nm">${esc(x.name)}</div><div class="sub">${stopSub(x)}</div>${stopTags(x)?`<div style="margin-top:3px">${stopTags(x)}</div>`:""}</div>${btn?`<button class="btn ghost small" data-act="${btn}" data-id="${x.id}">${btn==="ziel"?"Als Ziel":"Stopp"}</button>`:""}</li>`).join("")}</ul>`:`<p class="note">Nichts gefunden.</p>`;
-  box.innerHTML=`<div style="display:flex;flex-direction:column;gap:18px">
-    <div class="group"><h2>Campingplätze am Ziel (${S.ziel.length})</h2>${list(S.ziel.slice(0,60),"ziel")}</div>
-    <div class="group"><h2>Unterwegs übernachten (${S.weg.length})</h2><p class="note" style="margin:-4px 0 8px">Campingplätze bis 3,5 km neben der Route. „Stopp“ fügt den Platz als Zwischenziel ein.</p>${list(S.weg,"via")}</div>
-    <div class="group"><h2>Rastplätze und Raststätten (${S.rast.length})</h2><p class="note" style="margin:-4px 0 8px">Fahrtrichtung prüfen: Manche Anlagen liegen auf der Gegenseite.</p>${list(S.rast,null)}</div>
+  const ico=`<span class="ico camp" aria-hidden="true"><svg width="16" height="14" viewBox="0 0 16 14"><path d="M8 0L16 14H0z" fill="#fff"/><path d="M8 7l3 7H5z" fill="#2f7d3a"/></svg></span>`;
+  box.innerHTML=`<div style="display:flex;flex-direction:column;gap:14px">
+    <div class="group"><h2>Campingplätze am Ziel (${S.ziel.length})</h2><p class="note" style="margin:-4px 0 10px">Rund um ${esc(z?.label||"dein Ziel")}. „Als Ziel“ übernimmt den Platz als neues Ziel und rechnet die Route neu.</p>${radBtns}</div>
+    ${S.ziel.length?`<ul class="slist">${S.ziel.map(x=>`<li data-id="${x.id}">${ico}<div><div class="nm">${esc(x.name)}</div><div class="sub">${stopSub(x)}</div>${stopTags(x)?`<div style="margin-top:3px">${stopTags(x)}</div>`:""}</div><button class="btn ghost small" data-act="ziel" data-id="${x.id}">Als Ziel</button></li>`).join("")}</ul>`
+      :`<p class="note">Im Umkreis von ${S.rad} km wurde kein Campingplatz gefunden.${S.rad<40?" Probier einen größeren Umkreis.":""}</p>`}
     <p class="note">Quelle: ${esc(S.src)}. Ob Wohnwagen erlaubt sind, ist nicht überall eingetragen. Vor der Anreise beim Platz nachfragen.</p></div>`;
+  wire();
   box.querySelectorAll(".slist li").forEach(li=>li.onclick=e=>{const id=+li.dataset.id;const act=e.target.closest("[data-act]");if(act){e.stopPropagation();useStop(id,act.dataset.act);return}openPoi(id,true)});
 }
 function openPoi(id,fly){
@@ -977,7 +959,7 @@ function openPoi(id,fly){
     ${t.opening_hours?`<div class="sub" style="margin-top:6px">Geöffnet: ${esc(t.opening_hours)}</div>`:""}
     ${tel?`<div class="sub">Telefon: <span style="user-select:all">${esc(tel)}</span></div>`:""}
     ${web&&/^https?:\/\//.test(web)?`<div class="sub"><a href="${esc(web)}" target="_blank" rel="noopener">Webseite öffnen</a></div>`:""}
-    ${x.kind==="camp"?`<div class="row"><button class="btn primary small" data-act="ziel">Als Ziel</button><button class="btn ghost small" data-act="via">Als Zwischenstopp</button></div>`:""}</div>`;
+    ${x.kind==="camp"?`<div class="row"><button class="btn primary small" data-act="ziel">Als Ziel</button></div>`:""}</div>`;
   popup?.remove();
   popup=new maplibregl.Popup({maxWidth:"300px",offset:14}).setLngLat([x.lon,x.lat]).setHTML(html).addTo(map);
   popup.getElement().querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>{popup.remove();useStop(id,b.dataset.act)});
