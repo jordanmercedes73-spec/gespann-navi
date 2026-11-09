@@ -1,0 +1,1217 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Gespann-Navi</title>
+<meta name="theme-color" content="#1b4d9b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.css">
+<style>
+/* Layout: Planungs-Spalte links (Handy: Bottom-Sheet), Karte rechts, Fahr-HUD über der Karte */
+:root{
+  --bg:#e9edf1; --panel:#fbfcfd; --ink:#132030; --muted:#5a6879; --line:#d3dae3; --field:#f1f4f7;
+  --sign:#1b4d9b; --sign-ink:#ffffff; --amber:#f0ad1c; --ok:#1d7a4b; --warn:#a86400; --bad:#b4271f;
+  --link:#1b4d9b; --shadow:0 6px 24px rgba(15,30,50,.16);
+  --f-display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --f-body:"Barlow","Segoe UI",Roboto,Arial,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0d131a; --panel:#141c26; --ink:#e4ebf3; --muted:#93a2b4; --line:#253242; --field:#1b2531;
+  --sign:#2c63bd; --sign-ink:#ffffff; --amber:#f3b94a; --ok:#52c48c; --warn:#f0b04c; --bad:#ff7d72;
+  --link:#8db4f5; --shadow:0 6px 24px rgba(0,0,0,.45); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0d131a; --panel:#141c26; --ink:#e4ebf3; --muted:#93a2b4; --line:#253242; --field:#1b2531;
+  --sign:#2c63bd; --sign-ink:#ffffff; --amber:#f3b94a; --ok:#52c48c; --warn:#f0b04c; --bad:#ff7d72;
+  --link:#8db4f5; --shadow:0 6px 24px rgba(0,0,0,.45); color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-body);-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+a{color:var(--link)}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+[hidden]{display:none!important}
+
+#app{position:fixed;inset:0;display:grid;grid-template-columns:410px 1fr}
+#panel{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;z-index:5}
+.p-head{padding:14px 18px 0;padding-top:max(14px,env(safe-area-inset-top,0px));padding-left:max(18px,env(safe-area-inset-left,0px))}
+.brand{display:flex;align-items:center;gap:10px}
+.brand-mark{width:34px;height:34px;border-radius:6px;background:var(--sign);display:grid;place-items:center;flex:none}
+.brand h1{font:700 24px/1 var(--f-display);letter-spacing:.01em;margin:0}
+.brand small{display:block;font:500 12px/1.2 var(--f-body);color:var(--muted);letter-spacing:.02em;margin-top:3px}
+#sheetToggle{display:none;margin-left:auto;background:none;border:0;padding:6px;border-radius:6px;color:var(--muted)}
+.tabs{display:flex;gap:2px;margin-top:14px;border-bottom:1px solid var(--line)}
+.tab{background:none;border:0;padding:9px 11px 10px;font:600 15px var(--f-display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-1px;cursor:pointer}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--sign)}
+.tab .cnt{font:600 11px var(--f-body);background:var(--field);border:1px solid var(--line);border-radius:999px;padding:0 6px;margin-left:4px;letter-spacing:0}
+.p-body{overflow:auto;padding:16px 18px 28px;padding-left:max(18px,env(safe-area-inset-left,0px));padding-bottom:max(28px,env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:18px;min-height:0}
+
+h2{font:600 13px/1 var(--f-display);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.group{display:flex;flex-direction:column}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted);min-width:0}
+label.f .lab{display:flex;justify-content:space-between;gap:6px}
+label.f .lab em{font-style:normal;opacity:.75;font-size:11px}
+.inp{width:100%;border:1px solid var(--line);background:var(--field);border-radius:7px;padding:8px 10px;font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums;min-width:0}
+.inp:focus{border-color:var(--sign);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--sign) 22%,transparent)}
+.unit{position:relative}
+.unit .inp{padding-right:34px}
+.unit span{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--muted);pointer-events:none}
+.check{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--sign)}
+
+#sideview{width:100%;height:auto;display:block;background:var(--field);border-radius:10px;border:1px solid var(--line)}
+#sideview text{font-family:var(--f-display);font-weight:600}
+.sv-ground{stroke:var(--muted)} .sv-dim{stroke:var(--muted);fill:none} .sv-txt{fill:var(--ink)} .sv-sub{fill:var(--muted)}
+
+.checks{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+.checks li{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;font-size:13.5px}
+.pill{font:700 11px/1 var(--f-display);letter-spacing:.08em;text-transform:uppercase;padding:5px 7px 4px;border-radius:4px;color:#fff;min-width:44px;text-align:center}
+.pill.ok{background:var(--ok)} .pill.warn{background:var(--warn)} .pill.bad{background:var(--bad)} .pill.info{background:var(--sign)}
+.checks b{font-weight:600}
+.note{font-size:12.5px;color:var(--muted);margin:0}
+
+.wp{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:center;position:relative}
+.wp .btns{display:flex;gap:6px}
+.wp .dot{width:14px;height:14px;border-radius:50%;border:3px solid var(--sign);justify-self:center;background:var(--panel)}
+.wp .dot.ziel{background:var(--bad);border-color:var(--bad);border-radius:3px}
+.wp .dot.via{border-color:var(--amber)}
+.iconbtn{background:var(--field);border:1px solid var(--line);border-radius:7px;width:38px;height:38px;display:grid;place-items:center;cursor:pointer;color:var(--muted);flex:none}
+.iconbtn:hover{color:var(--ink)}
+.iconbtn.active{background:var(--sign);color:var(--sign-ink);border-color:var(--sign)}
+.wps{display:flex;flex-direction:column;gap:8px}
+.sugg{position:absolute;left:30px;right:46px;top:100%;margin-top:3px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);z-index:30;list-style:none;padding:4px;max-height:260px;overflow:auto}
+.sugg li{padding:8px 10px;border-radius:6px;cursor:pointer;font-size:14px}
+.sugg li small{display:block;color:var(--muted);font-size:12px}
+.sugg li:hover,.sugg li.on{background:var(--field)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--field);border-radius:999px;padding:5px 11px;font-size:13px;cursor:pointer}
+.chip:hover{border-color:var(--sign)}
+.linkbtn{background:none;border:0;color:var(--link);padding:0;font-size:13.5px;font-weight:600;cursor:pointer;align-self:flex-start}
+
+.btn{border:0;border-radius:8px;padding:12px 16px;font:700 17px/1 var(--f-display);letter-spacing:.06em;text-transform:uppercase;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--sign);color:var(--sign-ink)}
+.btn.go{background:var(--amber);color:#1a1405}
+.btn.ghost{background:var(--field);border:1px solid var(--line)}
+.btn.small{padding:8px 10px;font-size:14px}
+.btn:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row .btn{flex:1 1 140px}
+
+.status{font-size:13.5px;padding:10px 12px;border-radius:8px;background:var(--field);border:1px solid var(--line)}
+.status.err{border-color:var(--bad);color:var(--bad)}
+.sum{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.sum div{background:var(--panel);padding:10px 12px}
+.sum .k{font-size:11.5px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.sum .v{font:700 26px/1.1 var(--f-display);font-variant-numeric:tabular-nums}
+.sum .v small{font:500 13px var(--f-body);color:var(--muted)}
+.cmp{font-size:13.5px;margin:0}
+.countries{display:flex;flex-wrap:wrap;gap:6px}
+.cc{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-size:13px;font-variant-numeric:tabular-nums}
+.oval{display:inline-grid;place-items:center;min-width:32px;height:20px;padding:0 5px;border:1.5px solid var(--ink);border-radius:50%;font:700 12px/1 var(--f-display);letter-spacing:.04em;background:var(--panel);color:var(--ink)}
+.hints{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:13.5px}
+.mlist{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:10px;max-height:300px;overflow:auto}
+.mlist li{display:grid;grid-template-columns:28px 1fr auto;gap:8px;padding:8px 10px;border-top:1px solid var(--line);cursor:pointer;font-size:13.5px;align-items:center}
+.mlist li:first-child{border-top:0}
+.mlist li:hover{background:var(--field)}
+.mlist .d{color:var(--muted);font-variant-numeric:tabular-nums;font-size:12.5px;white-space:nowrap}
+.mlist svg{color:var(--sign)}
+
+/* Höhenprofil */
+#profile{width:100%;height:auto;display:block;cursor:crosshair}
+#profile .ax{fill:var(--muted);font:500 10.5px var(--f-body)}
+#profile .grid{stroke:var(--line)}
+#profile .area{fill:color-mix(in srgb,var(--sign) 18%,transparent);stroke:var(--sign);stroke-width:1.4}
+.steeps{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.steeps li{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;font-size:13.5px;cursor:pointer;padding:6px 8px;border-radius:8px;border:1px solid var(--line)}
+.steeps li:hover{background:var(--field)}
+.grade{font:700 15px/1 var(--f-display);min-width:58px;text-align:center;padding:5px 6px 4px;border-radius:4px;color:#fff;font-variant-numeric:tabular-nums}
+.grade.s1{background:#b87500} .grade.s2{background:#c8261d}
+.steeps .d{color:var(--muted);font-size:12.5px;white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* Stopps */
+.slist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.slist li{display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:center;padding:9px 10px;border-top:1px solid var(--line);cursor:pointer}
+.slist li:first-child{border-top:0}
+.slist li:hover{background:var(--field)}
+.slist .nm{font-weight:600;font-size:14px;line-height:1.25}
+.slist .sub{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.ico{width:26px;height:26px;border-radius:6px;display:grid;place-items:center;color:#fff;font:700 15px/1 var(--f-display)}
+.ico.camp{background:#2f7d3a;border-radius:50%} .ico.rest,.ico.services{background:#1b4d9b}
+.tag{display:inline-block;font-size:11px;font-weight:600;border:1px solid var(--line);border-radius:4px;padding:0 5px;margin-right:4px;color:var(--ink)}
+.tag.yes{border-color:var(--ok);color:var(--ok)}
+.maplibregl-popup-content{background:var(--panel);color:var(--ink);border-radius:10px;padding:12px 14px;box-shadow:var(--shadow);font:14px/1.4 var(--f-body);min-width:200px}
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip{border-top-color:var(--panel)}
+.maplibregl-popup-anchor-top .maplibregl-popup-tip{border-bottom-color:var(--panel)}
+.maplibregl-popup-close-button{color:var(--muted);font-size:20px;padding:2px 8px}
+.pop b{display:block;font:700 17px/1.2 var(--f-display);margin-bottom:3px;padding-right:16px}
+.pop .sub{font-size:12.5px;color:var(--muted);margin-bottom:4px}
+.pop .row{margin-top:8px;gap:6px}
+
+#mapwrap{position:relative;min-width:0}
+#map{position:absolute;inset:0}
+#map.picking{cursor:crosshair}
+.maplibregl-canvas{outline:none}
+.pickhint{position:absolute;top:max(14px,env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:var(--ink);color:var(--panel);padding:8px 14px;border-radius:999px;font-size:14px;z-index:6;box-shadow:var(--shadow)}
+
+/* Fahr-HUD */
+#hud{position:absolute;inset:0;pointer-events:none;z-index:4}
+.topstack{position:absolute;top:max(14px,env(safe-area-inset-top,0px));left:max(14px,env(safe-area-inset-left,0px));width:min(440px,calc(100% - 28px));display:flex;flex-direction:column;gap:8px}
+.topstack > *,.bar,.toast{pointer-events:auto}
+.mcard{background:var(--sign);color:var(--sign-ink);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;border:2px solid rgba(255,255,255,.85)}
+.mcard .main{display:grid;grid-template-columns:64px 1fr;gap:12px;padding:12px 14px;align-items:center}
+.mcard .arrow{width:64px;height:64px}
+.mcard .dist{font:700 34px/1 var(--f-display);font-variant-numeric:tabular-nums}
+.mcard .instr{font:500 16px/1.25 var(--f-body);margin-top:3px}
+.mcard .then{background:rgba(0,0,0,.22);padding:7px 14px;font-size:13px;display:flex;gap:8px;align-items:center}
+.mcard .then svg{flex:none}
+.wbanner{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:center;background:#ffd54a;color:#1d1600;border:2px solid #1d1600;border-radius:10px;padding:8px 12px;box-shadow:var(--shadow);font-size:13.5px;line-height:1.3}
+.wbanner.s2{background:#c8261d;color:#fff;border-color:#fff}
+.wbanner b{font:700 18px/1.1 var(--f-display);display:block}
+.wtri{width:38px;height:34px}
+.bar{position:absolute;left:max(14px,env(safe-area-inset-left,0px));right:max(14px,env(safe-area-inset-right,0px));bottom:max(30px,calc(env(safe-area-inset-bottom,0px) + 22px));background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:10px 12px;display:flex;flex-direction:column;gap:8px;max-width:780px;margin:0 auto}
+.bar .top{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.speed{display:flex;align-items:baseline;gap:4px}
+.speed b{font:700 40px/1 var(--f-display);font-variant-numeric:tabular-nums}
+.speed small{color:var(--muted);font-size:12px}
+.speed.over b{color:var(--bad)}
+.limit{width:46px;height:46px;border-radius:50%;background:#fff;border:6px solid #d0261d;display:grid;place-items:center;font:700 19px/1 var(--f-display);color:#111;flex:none;font-variant-numeric:tabular-nums}
+.speed.over + .limit{animation:pulse 1s infinite}
+@keyframes pulse{50%{transform:scale(1.12)}}
+.stat{display:flex;flex-direction:column;min-width:64px}
+.stat .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.stat .v{font:700 20px/1.1 var(--f-display);font-variant-numeric:tabular-nums}
+.bar .info{display:flex;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.bar .info:empty{display:none}
+.bar .info b{color:var(--ink);font-weight:600}
+.bar .ctrl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bar input[type=range]{flex:1 1 160px;accent-color:var(--sign);min-width:110px}
+.bar select{border:1px solid var(--line);background:var(--field);border-radius:7px;height:38px;padding:0 8px}
+.spacer{flex:1}
+body.gps .simonly{display:none!important}
+body:not(.gps) .gpsonly{display:none!important}
+.toast{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:18px 22px;box-shadow:var(--shadow);text-align:center;z-index:7;max-width:320px}
+.toast b{display:block;font:700 26px var(--f-display);margin-bottom:4px}
+
+.maplibregl-ctrl-bottom-right{bottom:env(safe-area-inset-bottom,0px)}
+.mk{width:22px;height:22px;border-radius:50%;border:4px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.4)}
+.mk.start{background:#1b4d9b} .mk.ziel{background:#c62a20;border-radius:5px} .mk.via{background:#f0ad1c}
+
+@media (max-width:760px){
+  #app{display:block}
+  #mapwrap{position:absolute;inset:0}
+  #panel{position:absolute;left:0;right:0;bottom:0;max-height:64%;border-right:0;border-top:1px solid var(--line);border-radius:16px 16px 0 0;box-shadow:var(--shadow)}
+  .p-head{padding-top:12px}
+  #sheetToggle{display:block}
+  #panel.collapsed .p-body{display:none}
+  #panel.collapsed .tabs{margin-bottom:max(0px,env(safe-area-inset-bottom,0px))}
+  body.sim #panel{display:none}
+  .mcard .main{grid-template-columns:52px 1fr}
+  .mcard .arrow{width:52px;height:52px}
+  .mcard .dist{font-size:30px}
+  .bar{bottom:max(12px,env(safe-area-inset-bottom,0px));padding:9px 10px}
+  .bar .top{gap:9px;flex-wrap:nowrap}
+  .stat{min-width:0}
+  .stat .v{font-size:17px}
+  .stat .k{font-size:10px}
+  .limit{width:40px;height:40px;border-width:5px;font-size:16px}
+  .speed b{font-size:30px}
+  .speed small{display:none}
+  .bar input[type=range]{order:-1;flex-basis:100%}
+  body.sim .maplibregl-ctrl-top-right{display:none}
+  .pickhint{top:max(10px,env(safe-area-inset-top,0px))}
+}
+@media (prefers-reduced-motion:reduce){.speed.over + .limit{animation:none}}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <div class="p-head">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg width="26" height="18" viewBox="0 0 26 18"><rect x="1" y="5" width="8" height="8" rx="1.5" fill="#fff"/><rect x="11" y="2" width="14" height="11" rx="2" fill="#fff"/><line x1="9" y1="11" x2="11" y2="11" stroke="#fff" stroke-width="1.6"/><circle cx="4" cy="14.5" r="2" fill="#f0ad1c"/><circle cx="18" cy="14.5" r="2" fill="#f0ad1c"/></svg>
+        </div>
+        <div><h1>Gespann-Navi</h1><small>Routen für Pkw mit Wohnwagen</small></div>
+        <button id="sheetToggle" aria-label="Planung ein- oder ausklappen"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 15l6-6 6 6"/></svg></button>
+      </div>
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tab-route" aria-selected="true" data-tab="route">Route</button>
+        <button class="tab" role="tab" id="tab-stops" aria-selected="false" data-tab="stops">Stopps<span class="cnt" id="stopsCnt" hidden></span></button>
+        <button class="tab" role="tab" id="tab-gespann" aria-selected="false" data-tab="gespann">Gespann</button>
+      </div>
+    </div>
+
+    <div class="p-body" id="body-route">
+      <div class="group">
+        <h2>Strecke</h2>
+        <div class="wps" id="wps"></div>
+        <div class="row" style="margin-top:8px;gap:14px">
+          <button class="linkbtn" id="addVia">+ Zwischenziel</button>
+          <button class="linkbtn" id="swap">Start und Ziel tauschen</button>
+        </div>
+      </div>
+      <div class="group">
+        <h2>Beliebte Ziele</h2>
+        <div class="chips" id="presets"></div>
+      </div>
+      <div class="group">
+        <h2>Optionen</h2>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <label class="check"><input type="checkbox" id="optToll"> Mautstraßen meiden</label>
+          <label class="check"><input type="checkbox" id="optFerry" checked> Fähren erlauben</label>
+          <label class="check"><input type="checkbox" id="optHwy" checked> Autobahnen bevorzugen</label>
+          <label class="f" style="margin-top:4px"><span class="lab">Abfahrt</span><input class="inp" type="datetime-local" id="depart"></label>
+        </div>
+      </div>
+      <button class="btn primary" id="calc">Route berechnen</button>
+      <div id="routeStatus" class="status" hidden></div>
+      <div id="result" hidden style="display:flex;flex-direction:column;gap:16px"></div>
+    </div>
+
+    <div class="p-body" id="body-stops" hidden>
+      <div id="stopsBody"><p class="note">Berechne zuerst eine Route. Danach erscheinen hier Campingplätze am Ziel, Übernachtungsplätze unterwegs und Rastplätze an der Strecke.</p></div>
+    </div>
+
+    <div class="p-body" id="body-gespann" hidden>
+      <div class="group">
+        <h2>Dein Gespann</h2>
+        <svg id="sideview" viewBox="0 0 380 150" role="img" aria-label="Seitenansicht des Gespanns, maßstäblich"></svg>
+      </div>
+      <div class="group">
+        <h2>Zugfahrzeug</h2>
+        <div class="grid2">
+          <label class="f" style="grid-column:1/-1"><span class="lab">Bezeichnung</span><input class="inp" id="zug_name"></label>
+          <label class="f"><span class="lab">Länge <em>Feld 18</em></span><div class="unit"><input class="inp" type="number" step="0.01" id="zug_laenge"><span>m</span></div></label>
+          <label class="f"><span class="lab">Breite <em>Feld 19</em></span><div class="unit"><input class="inp" type="number" step="0.01" id="zug_breite"><span>m</span></div></label>
+          <label class="f"><span class="lab">Höhe inkl. Dachbox <em>Feld 20</em></span><div class="unit"><input class="inp" type="number" step="0.01" id="zug_hoehe"><span>m</span></div></label>
+          <label class="f"><span class="lab">Radstand</span><div class="unit"><input class="inp" type="number" step="0.01" id="zug_radstand"><span>m</span></div></label>
+          <label class="f"><span class="lab">Zul. Gesamtmasse <em>F.2</em></span><div class="unit"><input class="inp" type="number" step="10" id="zug_zgm"><span>kg</span></div></label>
+          <label class="f"><span class="lab">Leermasse <em>G</em></span><div class="unit"><input class="inp" type="number" step="10" id="zug_leer"><span>kg</span></div></label>
+          <label class="f" style="grid-column:1/-1"><span class="lab">Anhängelast gebremst <em>O.1</em></span><div class="unit"><input class="inp" type="number" step="10" id="zug_anhaengelast"><span>kg</span></div></label>
+        </div>
+      </div>
+      <div class="group">
+        <h2>Wohnwagen</h2>
+        <div class="grid2">
+          <label class="f" style="grid-column:1/-1"><span class="lab">Bezeichnung</span><input class="inp" id="ww_name"></label>
+          <label class="f"><span class="lab">Länge inkl. Deichsel</span><div class="unit"><input class="inp" type="number" step="0.01" id="ww_laenge"><span>m</span></div></label>
+          <label class="f"><span class="lab">Breite</span><div class="unit"><input class="inp" type="number" step="0.01" id="ww_breite"><span>m</span></div></label>
+          <label class="f"><span class="lab">Höhe inkl. Klima/SAT</span><div class="unit"><input class="inp" type="number" step="0.01" id="ww_hoehe"><span>m</span></div></label>
+          <label class="f"><span class="lab">Zul. Gesamtmasse</span><div class="unit"><input class="inp" type="number" step="10" id="ww_zgm"><span>kg</span></div></label>
+        </div>
+      </div>
+      <div class="group">
+        <h2>Fahrer und Zulassung</h2>
+        <div class="grid2">
+          <label class="f"><span class="lab">Führerschein</span>
+            <select class="inp" id="fs"><option value="B">B</option><option value="B96">B96</option><option value="BE">BE</option></select></label>
+          <label class="check" style="align-self:end;padding-bottom:8px"><input type="checkbox" id="tempo100"> Tempo-100-Zulassung</label>
+        </div>
+      </div>
+      <div class="group">
+        <h2>Gespann-Check</h2>
+        <ul class="checks" id="checks"></ul>
+      </div>
+      <p class="note">Die Vorgabewerte für Multivan T7 und Hobby Excellent sind Schätzwerte. Trag die Werte aus deinen Fahrzeugscheinen ein (Zulassungsbescheinigung Teil I, Felder in Klammern). Die Eingaben bleiben in diesem Browser gespeichert.</p>
+      <button class="linkbtn" id="resetG">Vorgabewerte wiederherstellen</button>
+    </div>
+  </aside>
+
+  <main id="mapwrap">
+    <div id="map"></div>
+    <div class="pickhint" id="pickhint" hidden>Tippe auf die Karte, um den Punkt zu setzen</div>
+    <div id="hud" hidden>
+      <div class="topstack">
+        <div class="mcard" id="mcard">
+          <div class="main"><svg class="arrow" id="mArrow" viewBox="0 0 64 64"></svg><div><div class="dist" id="mDist">–</div><div class="instr" id="mInstr"></div></div></div>
+          <div class="then" id="mThen" hidden></div>
+        </div>
+        <div class="wbanner" id="hWarn" hidden></div>
+      </div>
+      <div class="bar">
+        <div class="top">
+          <div class="speed" id="hSpeedBox"><b id="hSpeed">0</b><small>km/h</small></div>
+          <div class="limit" id="hLimit" title="Tempolimit für Gespanne">80</div>
+          <span class="oval" id="hCC" title="Land">DE</span>
+          <div class="spacer"></div>
+          <div class="stat"><span class="k">Rest</span><span class="v" id="hRest">–</span></div>
+          <div class="stat"><span class="k">Fahrzeit</span><span class="v" id="hTime">–</span></div>
+          <div class="stat"><span class="k">Ankunft</span><span class="v" id="hEta">–</span></div>
+        </div>
+        <div class="info"><span id="hNext"></span><span id="hGps" class="gpsonly"></span></div>
+        <div class="ctrl">
+          <button class="iconbtn simonly" id="sPlay" aria-label="Pause"></button>
+          <select id="sMult" class="simonly" aria-label="Simulationstempo">
+            <option value="1">1× Echtzeit</option><option value="3">3×</option><option value="10" selected>10×</option><option value="30">30×</option><option value="100">100×</option><option value="300">300×</option>
+          </select>
+          <input type="range" id="sSeek" class="simonly" min="0" max="1000" value="0" aria-label="Position auf der Route">
+          <span class="spacer gpsonly"></span>
+          <button class="iconbtn" id="zOut" aria-label="Herauszoomen" title="Herauszoomen"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12h14"/></svg></button>
+          <button class="iconbtn" id="zIn" aria-label="Hineinzoomen" title="Hineinzoomen"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12h14M12 5v14"/></svg></button>
+          <button class="iconbtn" id="sView" aria-label="Ansicht wechseln" title="Ansicht: 3D-Verfolgung"></button>
+          <button class="iconbtn" id="sVoice" aria-label="Sprachansagen" title="Sprachansagen"></button>
+          <button class="iconbtn" id="sStop" aria-label="Fahrt beenden" title="Fahrt beenden"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </div>
+      </div>
+      <div class="toast" id="arrived" hidden><b>Ziel erreicht</b><span id="arrivedTxt"></span><div class="row" style="margin-top:12px"><button class="btn ghost" id="arrivedOk">Schließen</button></div></div>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.js"></script>
+<script>
+"use strict";
+/* ---------- Daten und Dienste ---------- */
+const BORDERS = [["CH",[[[[9.524,47.524],[9.625,47.466],[9.61,47.392],[9.527,47.27],[9.484,47.173],[9.488,47.062],[9.621,47.057],[9.844,47.008],[9.877,46.937],[9.995,46.885],[10.132,46.852],[10.179,46.862],[10.348,46.986],[10.417,46.965],[10.456,46.899],[10.399,46.664],[10.438,46.619],[10.431,46.55],[10.363,46.546],[10.273,46.565],[10.197,46.621],[10.086,46.6],[10.039,46.484],[10.046,46.447],[10.082,46.421],[10.111,46.362],[10.147,46.253],[10.129,46.239],[10.042,46.237],[9.938,46.362],[9.884,46.368],[9.787,46.347],[9.639,46.296],[9.527,46.307],[9.481,46.348],[9.427,46.482],[9.304,46.496],[9.261,46.475],[9.25,46.286],[9.203,46.22],[9.07,46.102],[9.002,46.015],[8.998,45.984],[9.045,45.876],[9.023,45.845],[8.955,45.829],[8.905,45.862],[8.887,45.918],[8.779,45.996],[8.825,46.06],[8.818,46.078],[8.642,46.111],[8.458,46.246],[8.437,46.282],[8.444,46.402],[8.422,46.446],[8.372,46.446],[8.231,46.342],[8.095,46.27],[8.08,46.256],[8.127,46.187],[8.123,46.161],[7.994,46.015],[7.789,45.921],[7.54,45.979],[7.328,45.913],[7.13,45.88],[7.054,45.904],[6.953,46.017],[6.773,46.164],[6.817,46.276],[6.784,46.314],[6.766,46.369],[6.777,46.407],[6.759,46.416],[6.579,46.437],[6.428,46.43],[6.323,46.394],[6.233,46.333],[6.223,46.319],[6.273,46.253],[6.201,46.192],[6.086,46.147],[5.971,46.151],[5.971,46.215],[6.097,46.279],[6.122,46.378],[6.061,46.428],[6.161,46.611],[6.41,46.755],[6.439,46.927],[6.457,46.949],[6.665,47.027],[6.687,47.058],[6.953,47.267],[7,47.34],[6.921,47.361],[6.899,47.394],[6.968,47.453],[7.054,47.489],[7.137,47.489],[7.202,47.433],[7.267,47.427],[7.421,47.456],[7.493,47.548],[7.616,47.593],[7.699,47.571],[7.925,47.564],[8.095,47.576],[8.199,47.607],[8.429,47.591],[8.559,47.624],[8.57,47.638],[8.552,47.659],[8.451,47.652],[8.411,47.663],[8.404,47.689],[8.437,47.732],[8.509,47.767],[8.573,47.775],[8.617,47.767],[8.728,47.701],[8.793,47.716],[8.833,47.704],[8.879,47.656],[9.182,47.671],[9.524,47.524]]]]],["SK",[[[[22.538,49.072],[22.524,49.031],[22.39,48.874],[22.297,48.685],[22.142,48.569],[22.131,48.406],[22.11,48.393],[21.768,48.338],[21.721,48.347],[21.562,48.496],[21.451,48.551],[21.382,48.553],[21.195,48.51],[21.066,48.506],[20.868,48.546],[20.644,48.55],[20.49,48.527],[20.335,48.296],[19.899,48.131],[19.626,48.223],[19.564,48.213],[19.496,48.163],[19.467,48.11],[19.266,48.072],[18.913,48.051],[18.79,48.001],[18.751,47.939],[18.747,47.893],[18.78,47.854],[18.726,47.788],[18.146,47.763],[17.761,47.77],[17.635,47.81],[17.318,47.991],[17.278,48.005],[17.149,48.006],[17.088,48.039],[17.07,48.083],[16.972,48.197],[16.864,48.387],[16.864,48.442],[16.944,48.551],[16.987,48.676],[17.062,48.781],[17.134,48.841],[17.188,48.86],[17.484,48.827],[17.624,48.841],[17.757,48.888],[17.894,48.972],[17.912,48.999],[18.052,49.036],[18.085,49.065],[18.11,49.18],[18.16,49.258],[18.366,49.336],[18.416,49.392],[18.596,49.491],[18.751,49.494],[18.834,49.511],[18.938,49.498],[18.967,49.397],[19.15,49.4],[19.251,49.511],[19.442,49.598],[19.629,49.407],[19.773,49.373],[19.788,49.27],[19.755,49.204],[19.802,49.192],[19.917,49.222],[20.058,49.182],[20.108,49.27],[20.162,49.317],[20.364,49.385],[20.616,49.392],[20.727,49.369],[20.799,49.329],[20.947,49.317],[21.001,49.34],[21.08,49.418],[21.35,49.428],[21.638,49.412],[21.714,49.381],[21.89,49.343],[21.969,49.3],[22.02,49.209],[22.538,49.072]]]]],["SI",[[[[16.515,46.499],[16.321,46.534],[16.238,46.484],[16.252,46.388],[16.227,46.373],[16.065,46.371],[16,46.305],[15.932,46.277],[15.637,46.201],[15.594,46.14],[15.597,46.109],[15.666,46.048],[15.676,45.984],[15.651,45.862],[15.626,45.835],[15.453,45.798],[15.277,45.732],[15.273,45.718],[15.356,45.645],[15.291,45.612],[15.284,45.579],[15.338,45.467],[15.241,45.442],[15.111,45.451],[14.956,45.5],[14.899,45.493],[14.848,45.467],[14.794,45.479],[14.65,45.571],[14.607,45.611],[14.593,45.651],[14.568,45.658],[14.535,45.645],[14.427,45.506],[14.37,45.482],[14.085,45.477],[13.992,45.51],[13.97,45.503],[13.97,45.482],[13.934,45.449],[13.88,45.428],[13.614,45.477],[13.578,45.517],[13.722,45.588],[13.776,45.581],[13.876,45.614],[13.83,45.68],[13.722,45.762],[13.585,45.812],[13.57,45.835],[13.614,45.961],[13.599,45.98],[13.509,45.973],[13.488,45.987],[13.488,46.039],[13.617,46.133],[13.632,46.177],[13.452,46.223],[13.423,46.213],[13.38,46.262],[13.401,46.317],[13.477,46.369],[13.678,46.463],[13.7,46.52],[14.503,46.418],[14.55,46.401],[14.596,46.435],[14.758,46.499],[14.841,46.581],[14.892,46.605],[15.216,46.644],[15.439,46.63],[15.547,46.654],[15.633,46.699],[15.759,46.711],[15.957,46.678],[15.979,46.706],[15.975,46.802],[16.094,46.864],[16.285,46.857],[16.31,46.828],[16.335,46.722],[16.386,46.68],[16.382,46.638],[16.515,46.499]]]]],["RS",[[[[22.704,44.237],[22.628,44.194],[22.603,44.149],[22.599,44.076],[22.419,44.007],[22.365,43.862],[22.369,43.781],[22.394,43.706],[22.437,43.666],[22.473,43.602],[22.498,43.519],[22.556,43.455],[22.768,43.354],[22.858,43.253],[22.977,43.187],[22.941,43.097],[22.801,42.986],[22.707,42.883],[22.56,42.878],[22.466,42.842],[22.441,42.791],[22.466,42.751],[22.437,42.63],[22.473,42.543],[22.524,42.503],[22.531,42.481],[22.524,42.441],[22.423,42.33],[22.344,42.314],[22.239,42.357],[22.052,42.305],[21.904,42.323],[21.814,42.304],[21.739,42.267],[21.62,42.243],[21.562,42.248],[21.519,42.328],[21.53,42.35],[21.609,42.387],[21.732,42.595],[21.753,42.67],[21.39,42.751],[21.404,42.831],[21.238,42.913],[21.224,42.956],[21.058,43.092],[20.846,43.173],[20.824,43.238],[20.799,43.262],[20.623,43.199],[20.608,43.179],[20.659,43.1],[20.623,43.034],[20.475,42.953],[20.457,42.925],[20.486,42.88],[20.468,42.857],[20.346,42.828],[20.338,42.892],[20.27,42.935],[20.169,42.968],[19.942,43.081],[19.78,43.109],[19.672,43.165],[19.615,43.173],[19.55,43.211],[19.413,43.343],[19.219,43.449],[19.19,43.52],[19.255,43.585],[19.359,43.593],[19.399,43.567],[19.453,43.562],[19.496,43.642],[19.489,43.703],[19.244,43.965],[19.305,43.993],[19.449,43.979],[19.55,43.987],[19.582,44.012],[19.582,44.043],[19.338,44.225],[19.233,44.281],[19.15,44.302],[19.118,44.361],[19.15,44.527],[19.291,44.698],[19.334,44.781],[19.356,44.859],[19.348,44.882],[19.237,44.915],[19.006,44.869],[18.996,44.904],[19.01,44.92],[19.06,44.911],[19.086,44.927],[19.1,44.974],[19.064,45.137],[19.129,45.152],[19.136,45.196],[19.204,45.168],[19.388,45.173],[19.399,45.213],[19.33,45.269],[19.093,45.336],[19.006,45.399],[19.006,45.467],[19.032,45.503],[19.064,45.515],[18.952,45.559],[18.916,45.6],[18.949,45.656],[18.895,45.767],[18.841,45.836],[18.895,45.866],[18.906,45.932],[19.017,45.96],[19.068,46.01],[19.086,46.017],[19.147,45.987],[19.208,45.984],[19.276,46.003],[19.42,46.064],[19.532,46.156],[19.615,46.17],[19.845,46.145],[19.935,46.161],[20.209,46.126],[20.302,46.05],[20.36,45.975],[20.58,45.869],[20.652,45.779],[20.709,45.736],[20.76,45.758],[20.774,45.75],[20.767,45.597],[20.785,45.536],[20.774,45.484],[21.022,45.321],[21.148,45.291],[21.228,45.241],[21.433,45.192],[21.49,45.147],[21.49,45.123],[21.433,45.076],[21.422,45.033],[21.354,45.008],[21.379,44.974],[21.534,44.918],[21.534,44.901],[21.519,44.882],[21.357,44.862],[21.361,44.826],[21.523,44.79],[21.598,44.755],[21.634,44.71],[21.739,44.68],[21.908,44.666],[22.027,44.619],[22.092,44.541],[22.2,44.56],[22.351,44.677],[22.498,44.706],[22.642,44.651],[22.722,44.605],[22.736,44.571],[22.7,44.555],[22.621,44.562],[22.552,44.54],[22.502,44.489],[22.495,44.435],[22.531,44.378],[22.682,44.286],[22.704,44.237]]]]],["SM",[[[[12.487,43.901],[12.426,43.894],[12.397,43.935],[12.44,43.982],[12.505,43.989],[12.516,43.953],[12.487,43.901]]]]],["PL",[[[[23.604,51.518],[23.679,51.395],[23.658,51.353],[23.665,51.31],[23.863,51.126],[23.938,50.992],[23.985,50.94],[24.097,50.872],[24.104,50.845],[23.996,50.81],[23.978,50.786],[24.046,50.723],[24.093,50.617],[24.09,50.53],[24.003,50.458],[23.974,50.411],[23.712,50.378],[23.409,50.175],[23.035,49.899],[22.707,49.607],[22.65,49.539],[22.732,49.294],[22.707,49.171],[22.848,49.081],[22.84,49.039],[22.808,49.02],[22.581,49.077],[22.473,49.081],[22.02,49.209],[21.969,49.3],[21.89,49.343],[21.714,49.381],[21.638,49.412],[21.224,49.43],[21.08,49.418],[21.001,49.34],[20.947,49.317],[20.868,49.315],[20.799,49.329],[20.727,49.369],[20.616,49.392],[20.364,49.385],[20.162,49.317],[20.108,49.27],[20.058,49.182],[19.917,49.222],[19.802,49.192],[19.755,49.204],[19.788,49.27],[19.773,49.373],[19.629,49.407],[19.442,49.598],[19.251,49.511],[19.15,49.4],[18.967,49.397],[18.938,49.498],[18.834,49.511],[18.808,49.614],[18.596,49.758],[18.567,49.819],[18.578,49.841],[18.564,49.879],[18.517,49.902],[18.348,49.93],[18.304,49.914],[18.204,49.965],[18.099,49.992],[18.027,50.036],[17.984,49.999],[17.876,49.971],[17.793,50.006],[17.682,50.1],[17.628,50.116],[17.588,50.157],[17.71,50.194],[17.736,50.23],[17.721,50.298],[17.703,50.307],[17.556,50.265],[17.415,50.254],[17.152,50.378],[16.879,50.426],[16.868,50.414],[16.994,50.26],[16.99,50.237],[16.843,50.187],[16.681,50.098],[16.638,50.102],[16.598,50.123],[16.486,50.249],[16.335,50.367],[16.231,50.393],[16.209,50.425],[16.281,50.484],[16.357,50.501],[16.418,50.574],[16.36,50.621],[16.281,50.655],[16.008,50.612],[15.95,50.671],[15.892,50.676],[15.73,50.741],[15.356,50.812],[15.277,50.883],[15.259,50.959],[14.992,51.015],[14.982,50.886],[14.895,50.862],[14.809,50.859],[14.964,51.095],[15.018,51.253],[14.935,51.435],[14.906,51.463],[14.726,51.523],[14.712,51.544],[14.74,51.628],[14.726,51.662],[14.625,51.77],[14.6,51.832],[14.676,51.905],[14.751,52.082],[14.704,52.11],[14.694,52.15],[14.704,52.207],[14.679,52.251],[14.614,52.277],[14.575,52.313],[14.553,52.36],[14.618,52.529],[14.514,52.645],[14.254,52.782],[14.128,52.878],[14.139,52.933],[14.193,52.982],[14.294,53.027],[14.37,53.105],[14.413,53.216],[14.416,53.284],[14.298,53.556],[14.258,53.73],[14.582,53.64],[14.553,53.707],[14.557,53.824],[14.215,53.871],[14.197,53.919],[14.211,53.95],[14.251,53.931],[14.384,53.924],[14.715,54.018],[15.288,54.14],[15.9,54.254],[16.188,54.291],[16.375,54.436],[16.558,54.555],[16.886,54.596],[17.008,54.652],[17.26,54.73],[17.844,54.817],[18.085,54.836],[18.322,54.838],[18.758,54.685],[18.801,54.633],[18.679,54.666],[18.502,54.742],[18.438,54.745],[18.589,54.513],[18.668,54.431],[18.837,54.369],[18.978,54.35],[19.406,54.386],[19.604,54.459],[20.209,54.421],[22.167,54.36],[22.732,54.35],[22.822,54.397],[22.894,54.391],[23.017,54.348],[23.042,54.305],[23.172,54.282],[23.283,54.24],[23.452,54.143],[23.481,54.079],[23.478,53.959],[23.6,53.6],[23.791,53.272],[23.888,53.027],[23.917,52.819],[23.902,52.704],[23.845,52.664],[23.409,52.516],[23.204,52.338],[23.175,52.287],[23.197,52.256],[23.46,52.169],[23.596,52.103],[23.654,52.041],[23.65,51.973],[23.607,51.879],[23.625,51.81],[23.546,51.711],[23.539,51.619],[23.604,51.518]]]]],["NL",[[[[5.992,50.751],[5.747,50.76],[5.693,50.775],[5.639,50.843],[5.647,50.867],[5.751,50.951],[5.74,50.959],[5.751,50.989],[5.819,51.086],[5.827,51.126],[5.798,51.154],[5.607,51.199],[5.477,51.286],[5.312,51.26],[5.215,51.279],[5.099,51.346],[5.06,51.452],[5.031,51.47],[4.945,51.407],[4.847,51.404],[4.822,51.412],[4.811,51.452],[4.757,51.49],[4.635,51.421],[4.588,51.423],[4.502,51.475],[4.383,51.428],[4.405,51.367],[4.372,51.357],[4.304,51.362],[4.005,51.444],[3.821,51.409],[3.692,51.451],[3.587,51.454],[3.451,51.541],[3.501,51.577],[3.548,51.589],[3.742,51.596],[3.886,51.574],[4.142,51.456],[4.275,51.471],[4.239,51.504],[4.081,51.551],[4.005,51.596],[4.181,51.61],[4.135,51.673],[3.947,51.81],[4.084,51.994],[4.21,52.058],[4.484,52.31],[4.563,52.442],[4.678,52.81],[4.768,52.942],[4.887,52.909],[5.06,52.961],[5.359,53.096],[5.445,53.214],[5.531,53.268],[5.873,53.376],[6.061,53.407],[6.817,53.442],[6.968,53.327],[7.198,53.282],[7.191,52.999],[7.115,52.886],[7.051,52.746],[7.033,52.652],[7.015,52.633],[6.748,52.635],[6.712,52.617],[6.705,52.598],[6.719,52.574],[6.691,52.53],[6.701,52.499],[6.748,52.464],[6.831,52.442],[6.968,52.444],[7,52.419],[7.036,52.381],[7.018,52.266],[6.979,52.206],[6.723,52.081],[6.716,52.036],[6.802,51.98],[6.741,51.911],[6.518,51.853],[6.424,51.859],[6.356,51.824],[6.298,51.852],[6.165,51.881],[5.949,51.803],[5.949,51.763],[6.089,51.638],[6.089,51.598],[6.194,51.489],[6.197,51.451],[6.165,51.355],[6.075,51.225],[6.082,51.18],[6.136,51.164],[6.129,51.147],[5.938,51.041],[5.87,51.046],[5.859,51.03],[5.895,50.984],[6.007,50.951],[6.05,50.905],[5.992,50.751]]],[[[4.225,51.386],[4.174,51.306],[4.041,51.247],[3.901,51.208],[3.832,51.213],[3.681,51.275],[3.58,51.286],[3.472,51.242],[3.433,51.246],[3.379,51.291],[3.35,51.378],[3.591,51.4],[3.717,51.369],[3.883,51.355],[4.012,51.397],[4.113,51.36],[4.225,51.386]]],[[[6.334,53.511],[6.194,53.476],[6.158,53.483],[6.291,53.515],[6.334,53.511]]],[[[5.931,53.459],[5.733,53.443],[5.654,53.466],[5.877,53.475],[5.931,53.459]]],[[[5.11,53.308],[4.923,53.235],[4.909,53.246],[5.027,53.31],[5.11,53.308]]],[[[5.326,53.386],[5.233,53.378],[5.189,53.391],[5.416,53.431],[5.582,53.438],[5.326,53.386]]],[[[4.887,53.07],[4.786,52.999],[4.711,53.036],[4.739,53.091],[4.887,53.183],[4.887,53.07]]],[[[3.947,51.739],[4.048,51.685],[4.073,51.648],[3.951,51.628],[3.818,51.694],[3.731,51.678],[3.699,51.709],[3.699,51.73],[3.789,51.746],[3.947,51.739]]],[[[6.734,53.582],[6.644,53.579],[6.669,53.605],[6.802,53.626],[6.734,53.582]]]]],["ME",[[[[19.194,43.533],[19.197,43.486],[19.219,43.449],[19.413,43.343],[19.55,43.211],[19.615,43.173],[19.672,43.165],[19.78,43.109],[19.942,43.081],[20.169,42.968],[20.27,42.935],[20.338,42.892],[20.349,42.852],[20.346,42.828],[20.216,42.798],[20.191,42.755],[20.054,42.76],[20.029,42.732],[20.09,42.632],[20.065,42.547],[19.788,42.475],[19.737,42.526],[19.741,42.607],[19.726,42.635],[19.705,42.647],[19.654,42.628],[19.399,42.342],[19.28,42.173],[19.33,42.13],[19.363,42.069],[19.341,41.87],[19.186,41.949],[19.122,42.061],[18.895,42.25],[18.632,42.378],[18.618,42.399],[18.646,42.442],[18.517,42.434],[18.438,42.522],[18.438,42.56],[18.535,42.62],[18.546,42.642],[18.542,42.673],[18.466,42.777],[18.445,42.968],[18.459,42.998],[18.625,43.027],[18.628,43.154],[18.675,43.231],[18.852,43.347],[18.934,43.34],[18.978,43.286],[19.028,43.293],[19.035,43.357],[18.942,43.496],[18.952,43.527],[18.974,43.543],[19.078,43.517],[19.194,43.533]]]]],["LU",[[[[6.118,50.121],[6.111,50.034],[6.14,49.975],[6.205,49.916],[6.323,49.838],[6.489,49.798],[6.485,49.708],[6.406,49.645],[6.377,49.6],[6.345,49.452],[6.241,49.494],[6.179,49.499],[6.118,49.485],[6.075,49.454],[6.01,49.445],[5.96,49.454],[5.902,49.491],[5.823,49.505],[5.791,49.537],[5.881,49.645],[5.787,49.76],[5.726,49.808],[5.744,49.919],[5.866,50.083],[5.978,50.168],[6.089,50.154],[6.118,50.121]]]]],["LI",[[[[9.581,47.057],[9.488,47.062],[9.484,47.173],[9.527,47.27],[9.556,47.185],[9.61,47.107],[9.581,47.057]]]]],["IT",[[[[7.022,45.927],[7.13,45.88],[7.328,45.913],[7.54,45.979],[7.789,45.921],[7.994,46.015],[8.123,46.161],[8.127,46.187],[8.08,46.256],[8.095,46.27],[8.231,46.342],[8.372,46.446],[8.422,46.446],[8.444,46.402],[8.437,46.282],[8.458,46.246],[8.642,46.111],[8.818,46.078],[8.825,46.06],[8.779,45.996],[8.887,45.918],[8.905,45.862],[8.955,45.829],[9.023,45.845],[9.045,45.876],[8.998,45.984],[9.002,46.015],[9.07,46.102],[9.203,46.22],[9.25,46.286],[9.261,46.475],[9.304,46.496],[9.427,46.482],[9.481,46.348],[9.527,46.307],[9.639,46.296],[9.787,46.347],[9.884,46.368],[9.938,46.362],[10.042,46.237],[10.082,46.229],[10.147,46.253],[10.111,46.362],[10.082,46.421],[10.046,46.447],[10.039,46.484],[10.086,46.6],[10.197,46.621],[10.273,46.565],[10.363,46.546],[10.431,46.55],[10.438,46.619],[10.399,46.664],[10.406,46.736],[10.453,46.866],[10.69,46.847],[10.759,46.793],[10.827,46.776],[10.993,46.777],[11.025,46.796],[11.133,46.937],[11.245,46.975],[11.529,46.998],[11.774,46.986],[12.17,47.083],[12.199,47.076],[12.202,47.06],[12.13,46.986],[12.156,46.935],[12.39,46.703],[12.48,46.673],[13.167,46.572],[13.491,46.555],[13.7,46.52],[13.678,46.463],[13.477,46.369],[13.401,46.317],[13.38,46.262],[13.423,46.213],[13.452,46.223],[13.632,46.177],[13.617,46.133],[13.488,46.039],[13.488,45.987],[13.509,45.973],[13.599,45.98],[13.614,45.961],[13.57,45.835],[13.585,45.812],[13.722,45.762],[13.83,45.68],[13.876,45.614],[13.776,45.581],[13.722,45.588],[13.783,45.628],[13.628,45.77],[13.56,45.77],[13.466,45.71],[13.207,45.772],[13.156,45.746],[13.12,45.697],[13.03,45.637],[12.904,45.611],[12.76,45.545],[12.498,45.461],[12.433,45.468],[12.537,45.545],[12.49,45.546],[12.274,45.446],[12.224,45.241],[12.285,45.208],[12.393,45.04],[12.523,44.968],[12.465,44.845],[12.386,44.798],[12.318,44.833],[12.278,44.833],[12.249,44.722],[12.307,44.43],[12.397,44.224],[12.487,44.135],[12.692,43.994],[12.908,43.922],[13.297,43.685],[13.509,43.613],[13.563,43.571],[13.693,43.39],[13.804,43.18],[13.923,42.852],[14.01,42.689],[14.182,42.507],[14.542,42.245],[14.866,42.052],[15.169,41.934],[15.406,41.913],[15.964,41.939],[16.062,41.929],[16.166,41.896],[16.188,41.814],[16.152,41.758],[15.914,41.621],[15.9,41.512],[16.011,41.436],[16.551,41.232],[17.102,41.062],[17.275,40.976],[17.473,40.84],[17.955,40.654],[18.034,40.564],[18.33,40.371],[18.459,40.22],[18.484,40.104],[18.394,39.904],[18.344,39.821],[18.218,39.852],[18.078,39.937],[17.865,40.279],[17.476,40.314],[17.257,40.399],[17.25,40.437],[17.181,40.503],[17.03,40.514],[16.929,40.458],[16.807,40.326],[16.67,40.137],[16.53,39.859],[16.522,39.748],[16.598,39.639],[16.825,39.578],[16.998,39.481],[17.113,39.38],[17.124,39.137],[17.174,38.998],[17.098,38.92],[16.951,38.939],[16.756,38.889],[16.616,38.8],[16.558,38.715],[16.573,38.493],[16.544,38.41],[16.281,38.25],[16.144,38.087],[16.058,37.941],[15.723,37.939],[15.648,38.035],[15.644,38.175],[15.702,38.262],[15.824,38.304],[15.903,38.484],[15.878,38.615],[15.928,38.672],[15.972,38.712],[16.198,38.759],[16.209,38.941],[16.108,39.024],[16.022,39.354],[15.853,39.627],[15.763,39.87],[15.694,39.989],[15.586,40.054],[15.392,40.052],[15.295,40.069],[14.949,40.239],[14.928,40.265],[14.928,40.309],[14.985,40.378],[14.949,40.469],[14.906,40.555],[14.841,40.63],[14.766,40.668],[14.557,40.627],[14.46,40.634],[14.384,40.601],[14.341,40.599],[14.46,40.729],[14.427,40.759],[14.308,40.812],[14.103,40.828],[14.074,40.793],[14.046,40.812],[14.049,40.87],[13.858,41.13],[13.732,41.236],[13.671,41.255],[13.556,41.232],[13.362,41.279],[13.246,41.29],[13.088,41.245],[13.041,41.265],[13.023,41.3],[12.85,41.41],[12.631,41.47],[12.206,41.812],[12.076,41.941],[11.806,42.081],[11.637,42.288],[11.497,42.363],[11.295,42.423],[11.14,42.39],[11.104,42.416],[11.184,42.456],[11.169,42.534],[10.939,42.739],[10.802,42.804],[10.708,42.935],[10.644,42.958],[10.514,42.967],[10.532,43.14],[10.521,43.205],[10.449,43.371],[10.32,43.514],[10.248,43.852],[10.186,43.948],[10.046,44.02],[9.729,44.1],[9.29,44.319],[9.196,44.323],[8.93,44.408],[8.764,44.421],[8.552,44.347],[8.293,44.137],[8.08,43.92],[8.005,43.876],[7.735,43.802],[7.493,43.767],[7.483,43.864],[7.591,43.965],[7.677,44.083],[7.637,44.165],[7.371,44.128],[7.317,44.139],[6.968,44.281],[6.899,44.336],[6.874,44.392],[6.892,44.428],[6.842,44.51],[6.961,44.677],[7.007,44.689],[7.029,44.717],[6.993,44.828],[6.939,44.859],[6.802,44.883],[6.737,44.921],[6.691,45.022],[6.633,45.069],[6.629,45.118],[6.691,45.144],[6.842,45.135],[6.982,45.215],[7.079,45.239],[7.115,45.349],[7.148,45.381],[7.155,45.401],[7.015,45.501],[6.881,45.67],[6.806,45.71],[6.791,45.741],[6.788,45.781],[6.806,45.814],[6.939,45.868],[7.022,45.927]],[[12.44,41.899],[12.429,41.906],[12.429,41.897],[12.44,41.899]],[[12.487,43.901],[12.516,43.953],[12.505,43.989],[12.44,43.982],[12.397,43.935],[12.426,43.894],[12.487,43.901]]],[[[10.395,42.857],[10.428,42.819],[10.431,42.797],[10.41,42.771],[10.42,42.713],[10.334,42.762],[10.208,42.738],[10.132,42.743],[10.111,42.784],[10.129,42.81],[10.359,42.823],[10.395,42.857]]],[[[13.938,40.706],[13.869,40.708],[13.855,40.724],[13.873,40.762],[13.963,40.739],[13.938,40.706]]],[[[12.051,36.757],[12.004,36.747],[11.94,36.78],[11.947,36.844],[12.026,36.821],[12.051,36.757]]],[[[15.576,38.22],[15.475,38.063],[15.234,37.785],[15.19,37.651],[15.1,37.458],[15.118,37.335],[15.23,37.245],[15.172,37.208],[15.288,37.097],[15.295,37.056],[15.295,37.014],[15.144,36.892],[15.115,36.839],[15.111,36.688],[15.003,36.695],[14.888,36.724],[14.776,36.71],[14.503,36.799],[14.366,36.972],[14.143,37.104],[13.905,37.101],[13.801,37.135],[13.588,37.254],[13.362,37.349],[13.171,37.479],[13.041,37.507],[12.922,37.571],[12.699,37.571],[12.642,37.594],[12.526,37.67],[12.436,37.819],[12.548,38.052],[12.663,38.108],[12.735,38.182],[12.85,38.064],[12.904,38.035],[13.048,38.083],[13.056,38.13],[13.16,38.191],[13.351,38.181],[13.383,38.127],[13.491,38.102],[13.682,38],[13.79,37.981],[14.049,38.04],[14.287,38.017],[14.506,38.045],[14.636,38.085],[14.737,38.151],[14.791,38.167],[15.118,38.153],[15.176,38.168],[15.223,38.212],[15.28,38.231],[15.342,38.217],[15.5,38.292],[15.568,38.295],[15.633,38.267],[15.576,38.22]]],[[[9.632,40.882],[9.682,40.818],[9.805,40.5],[9.783,40.441],[9.643,40.269],[9.661,40.16],[9.7,40.092],[9.707,40.017],[9.617,39.354],[9.563,39.167],[9.488,39.139],[9.265,39.217],[9.149,39.196],[9.056,39.24],[9.023,39.043],[8.966,38.963],[8.883,38.913],[8.649,38.927],[8.595,38.963],[8.419,39.207],[8.401,39.481],[8.447,39.562],[8.462,39.647],[8.451,39.722],[8.473,39.748],[8.512,39.722],[8.541,39.731],[8.548,39.838],[8.494,39.897],[8.408,39.917],[8.408,40.038],[8.455,40.078],[8.469,40.13],[8.473,40.293],[8.408,40.352],[8.386,40.443],[8.354,40.5],[8.188,40.651],[8.181,40.771],[8.203,40.871],[8.224,40.913],[8.311,40.857],[8.469,40.835],[8.573,40.851],[8.699,40.896],[8.822,40.949],[8.998,41.111],[9.106,41.142],[9.164,41.186],[9.182,41.243],[9.229,41.257],[9.283,41.201],[9.351,41.196],[9.455,41.151],[9.538,41.054],[9.614,41.017],[9.621,41.005],[9.589,40.993],[9.553,40.932],[9.632,40.882]]],[[[8.48,39.068],[8.422,38.969],[8.361,39.038],[8.357,39.099],[8.368,39.116],[8.48,39.068]]],[[[8.285,41.04],[8.253,40.995],[8.206,40.998],[8.267,41.099],[8.321,41.121],[8.343,41.102],[8.285,41.04]]]]],["HU",[[[[22.131,48.406],[22.254,48.407],[22.268,48.36],[22.351,48.256],[22.52,48.206],[22.581,48.135],[22.675,48.104],[22.768,48.109],[22.858,48.029],[22.855,47.959],[22.876,47.947],[22.678,47.8],[22.61,47.767],[22.491,47.772],[22.29,47.729],[22.113,47.572],[21.998,47.505],[21.994,47.395],[21.868,47.305],[21.786,47.138],[21.663,47.045],[21.652,46.963],[21.476,46.753],[21.498,46.704],[21.321,46.607],[21.296,46.572],[21.253,46.486],[21.264,46.413],[21.192,46.392],[21.152,46.305],[21.04,46.243],[20.839,46.26],[20.76,46.246],[20.734,46.194],[20.662,46.145],[20.612,46.133],[20.508,46.166],[20.281,46.133],[20.241,46.109],[20.162,46.142],[19.935,46.161],[19.845,46.145],[19.615,46.17],[19.532,46.156],[19.42,46.064],[19.208,45.984],[19.147,45.987],[19.086,46.017],[19.017,45.96],[18.927,45.932],[18.722,45.899],[18.664,45.908],[18.564,45.814],[18.438,45.767],[18.358,45.753],[17.962,45.77],[17.808,45.791],[17.638,45.868],[17.606,45.914],[17.53,45.94],[17.408,45.951],[17.311,45.996],[17.242,46.076],[16.94,46.253],[16.872,46.34],[16.749,46.416],[16.515,46.499],[16.382,46.638],[16.386,46.68],[16.335,46.722],[16.31,46.828],[16.285,46.857],[16.094,46.864],[16.252,46.972],[16.332,47.003],[16.454,47.006],[16.494,47.123],[16.483,47.14],[16.44,47.145],[16.418,47.223],[16.461,47.274],[16.436,47.367],[16.443,47.399],[16.515,47.404],[16.623,47.447],[16.677,47.536],[16.641,47.609],[16.432,47.656],[16.422,47.675],[16.551,47.748],[16.591,47.751],[16.785,47.678],[16.825,47.694],[17.066,47.708],[17.03,47.838],[17.041,47.873],[17.077,47.9],[17.088,47.963],[17.149,48.006],[17.278,48.005],[17.318,47.991],[17.635,47.81],[17.761,47.77],[18.146,47.763],[18.726,47.788],[18.78,47.854],[18.747,47.893],[18.751,47.939],[18.79,48.001],[18.913,48.051],[19.266,48.072],[19.467,48.11],[19.496,48.163],[19.564,48.213],[19.626,48.223],[19.899,48.131],[20.335,48.296],[20.49,48.527],[20.644,48.55],[20.868,48.546],[21.066,48.506],[21.195,48.51],[21.382,48.553],[21.451,48.551],[21.562,48.496],[21.721,48.347],[21.768,48.338],[22.131,48.406]]]]],["DE",[[[[9.524,47.524],[9.182,47.671],[8.879,47.656],[8.833,47.704],[8.793,47.716],[8.728,47.701],[8.617,47.767],[8.573,47.775],[8.509,47.767],[8.437,47.732],[8.404,47.689],[8.411,47.663],[8.451,47.652],[8.552,47.659],[8.57,47.638],[8.559,47.624],[8.429,47.591],[8.199,47.607],[8.095,47.576],[7.925,47.564],[7.699,47.571],[7.565,47.607],[7.529,47.673],[7.54,47.774],[7.594,47.906],[7.609,48.003],[7.583,48.064],[7.616,48.157],[7.706,48.281],[7.839,48.636],[8.141,48.886],[8.134,48.973],[8.001,49.011],[7.612,49.062],[7.526,49.086],[7.45,49.152],[7.198,49.114],[7.119,49.128],[7.036,49.112],[7,49.18],[6.892,49.208],[6.849,49.202],[6.777,49.154],[6.734,49.161],[6.575,49.32],[6.536,49.395],[6.457,49.442],[6.345,49.452],[6.377,49.6],[6.406,49.645],[6.485,49.708],[6.489,49.798],[6.323,49.838],[6.255,49.873],[6.14,49.975],[6.111,50.034],[6.107,50.095],[6.176,50.232],[6.363,50.317],[6.341,50.452],[6.295,50.485],[6.205,50.499],[6.179,50.522],[6.169,50.546],[6.237,50.596],[5.992,50.751],[6.05,50.905],[6.007,50.951],[5.895,50.984],[5.859,51.03],[5.87,51.046],[5.938,51.041],[6.129,51.147],[6.136,51.164],[6.082,51.18],[6.075,51.225],[6.194,51.411],[6.194,51.489],[6.089,51.598],[6.089,51.638],[5.949,51.763],[5.949,51.803],[6.165,51.881],[6.298,51.852],[6.356,51.824],[6.424,51.859],[6.518,51.853],[6.741,51.911],[6.802,51.98],[6.716,52.036],[6.723,52.081],[6.979,52.206],[7.018,52.266],[7.036,52.381],[6.968,52.444],[6.831,52.442],[6.748,52.464],[6.701,52.499],[6.691,52.53],[6.719,52.574],[6.705,52.598],[6.712,52.617],[6.748,52.635],[7.015,52.633],[7.115,52.886],[7.18,52.966],[7.198,53.282],[7.151,53.327],[7.054,53.376],[7.108,53.556],[7.205,53.655],[7.285,53.681],[7.63,53.697],[8.008,53.69],[8.167,53.544],[8.109,53.468],[8.199,53.433],[8.246,53.445],[8.3,53.584],[8.332,53.607],[8.451,53.551],[8.494,53.515],[8.494,53.395],[8.537,53.556],[8.505,53.671],[8.527,53.78],[8.62,53.876],[8.897,53.836],[9.207,53.857],[9.322,53.813],[9.585,53.6],[9.671,53.565],[9.783,53.555],[9.632,53.6],[9.311,53.858],[9.218,53.891],[9.07,53.9],[8.977,53.926],[8.919,53.966],[8.905,54.001],[8.908,54.261],[8.851,54.299],[8.779,54.313],[8.735,54.296],[8.645,54.294],[8.627,54.353],[8.649,54.398],[8.833,54.428],[8.951,54.468],[8.959,54.539],[8.879,54.594],[8.681,54.792],[8.671,54.903],[8.905,54.897],[9.185,54.844],[9.254,54.808],[9.34,54.806],[9.617,54.855],[9.661,54.834],[9.74,54.825],[9.747,54.808],[9.891,54.78],[10.021,54.674],[10.028,54.581],[9.869,54.473],[10.143,54.489],[10.212,54.409],[10.359,54.438],[10.73,54.317],[11.014,54.379],[11.065,54.28],[11.007,54.181],[10.809,54.075],[10.856,54.009],[10.917,53.996],[11.104,54.009],[11.4,53.945],[11.461,53.964],[11.702,54.114],[11.796,54.145],[12.112,54.169],[12.17,54.226],[12.296,54.284],[12.577,54.468],[13.03,54.41],[13.149,54.282],[13.448,54.141],[13.725,54.154],[13.822,54.02],[13.866,53.853],[14.024,53.768],[14.258,53.73],[14.298,53.556],[14.416,53.284],[14.413,53.216],[14.37,53.105],[14.294,53.027],[14.193,52.982],[14.139,52.933],[14.128,52.878],[14.254,52.782],[14.514,52.645],[14.618,52.529],[14.553,52.36],[14.575,52.313],[14.614,52.277],[14.679,52.251],[14.704,52.207],[14.694,52.15],[14.704,52.11],[14.751,52.082],[14.676,51.905],[14.6,51.832],[14.625,51.77],[14.726,51.662],[14.74,51.628],[14.712,51.544],[14.726,51.523],[14.906,51.463],[14.935,51.435],[15.018,51.253],[14.964,51.095],[14.917,51.008],[14.798,50.843],[14.766,50.819],[14.722,50.815],[14.614,50.855],[14.625,50.914],[14.596,50.919],[14.56,50.954],[14.546,50.994],[14.319,51.037],[14.254,51.003],[14.301,50.952],[14.377,50.914],[14.37,50.899],[14.2,50.862],[13.898,50.761],[13.7,50.716],[13.556,50.704],[13.527,50.694],[13.473,50.617],[13.437,50.602],[13.376,50.622],[13.308,50.586],[13.239,50.577],[13.182,50.51],[13.016,50.491],[12.966,50.416],[12.944,50.407],[12.764,50.432],[12.706,50.409],[12.548,50.393],[12.454,50.35],[12.357,50.274],[12.278,50.182],[12.231,50.244],[12.134,50.312],[12.098,50.312],[12.091,50.268],[12.127,50.213],[12.174,50.176],[12.21,50.098],[12.278,50.043],[12.458,49.956],[12.512,49.895],[12.498,49.853],[12.39,49.739],[12.501,49.64],[12.631,49.461],[12.814,49.329],[12.915,49.331],[13.142,49.159],[13.228,49.112],[13.29,49.098],[13.34,49.06],[13.401,48.977],[13.441,48.956],[13.549,48.959],[13.768,48.815],[13.815,48.767],[13.786,48.588],[13.675,48.524],[13.488,48.583],[13.459,48.565],[13.408,48.393],[13.376,48.362],[13.322,48.331],[13.081,48.275],[12.897,48.204],[12.814,48.161],[12.76,48.107],[12.76,48.076],[12.955,47.89],[12.955,47.808],[12.897,47.722],[13.034,47.699],[13.056,47.656],[13.016,47.479],[12.969,47.475],[12.811,47.543],[12.782,47.564],[12.796,47.607],[12.771,47.64],[12.685,47.67],[12.483,47.637],[12.364,47.689],[12.21,47.718],[12.195,47.709],[12.202,47.647],[12.184,47.619],[11.716,47.583],[11.392,47.487],[11.374,47.459],[11.299,47.425],[11.212,47.414],[11.191,47.425],[11.043,47.394],[10.982,47.399],[10.896,47.47],[10.87,47.501],[10.874,47.52],[10.741,47.524],[10.658,47.548],[10.438,47.551],[10.402,47.418],[10.37,47.366],[10.312,47.314],[10.183,47.279],[10.201,47.364],[10.068,47.394],[10.075,47.428],[10.06,47.449],[9.97,47.505],[9.751,47.576],[9.65,47.525],[9.549,47.534],[9.524,47.524]]],[[[13.711,54.383],[13.736,54.315],[13.707,54.282],[13.596,54.338],[13.48,54.338],[13.416,54.249],[13.365,54.246],[13.189,54.325],[13.164,54.365],[13.178,54.544],[13.232,54.582],[13.239,54.638],[13.336,54.697],[13.423,54.699],[13.491,54.615],[13.657,54.56],[13.671,54.535],[13.581,54.464],[13.603,54.424],[13.711,54.383]]],[[[14.211,53.95],[14.197,53.919],[14.215,53.871],[14.049,53.864],[13.927,53.879],[13.902,53.938],[13.923,53.997],[13.826,54.06],[13.826,54.127],[14.211,53.95]]],[[[11.284,54.417],[11.13,54.416],[11.072,54.456],[11.011,54.466],[11.043,54.516],[11.086,54.534],[11.234,54.501],[11.284,54.417]]],[[[8.307,54.787],[8.285,54.766],[8.296,54.909],[8.404,55.058],[8.451,55.055],[8.39,54.987],[8.372,54.93],[8.379,54.9],[8.631,54.891],[8.602,54.865],[8.347,54.848],[8.307,54.787]]],[[[8.588,54.713],[8.548,54.688],[8.455,54.692],[8.401,54.714],[8.419,54.739],[8.509,54.761],[8.573,54.749],[8.588,54.713]]]]],["FR",[[[[9.481,42.805],[9.455,42.659],[9.527,42.552],[9.556,42.161],[9.549,42.13],[9.401,41.927],[9.394,41.731],[9.373,41.679],[9.329,41.627],[9.254,41.46],[9.185,41.385],[8.894,41.515],[8.807,41.588],[8.829,41.628],[8.879,41.668],[8.887,41.701],[8.717,41.762],[8.717,41.804],[8.757,41.87],[8.739,41.925],[8.62,41.93],[8.617,41.96],[8.703,42.043],[8.699,42.095],[8.588,42.161],[8.566,42.218],[8.609,42.258],[8.674,42.284],[8.627,42.343],[8.566,42.357],[8.638,42.427],[8.714,42.55],[8.815,42.607],[9.045,42.661],[9.139,42.732],[9.196,42.729],[9.286,42.694],[9.315,42.713],[9.337,42.767],[9.322,42.814],[9.329,42.944],[9.362,43.017],[9.416,43.022],[9.463,42.981],[9.481,42.805]]],[[[7.616,47.593],[7.493,47.548],[7.421,47.456],[7.342,47.433],[7.202,47.433],[7.137,47.489],[7.054,47.489],[6.968,47.453],[6.899,47.394],[6.921,47.361],[6.986,47.352],[7,47.322],[6.953,47.267],[6.687,47.058],[6.665,47.027],[6.457,46.949],[6.439,46.927],[6.41,46.755],[6.161,46.611],[6.068,46.458],[6.061,46.428],[6.122,46.378],[6.097,46.279],[5.971,46.215],[5.971,46.151],[6.007,46.142],[6.086,46.147],[6.201,46.192],[6.273,46.253],[6.223,46.319],[6.233,46.333],[6.323,46.394],[6.428,46.43],[6.579,46.437],[6.777,46.407],[6.766,46.369],[6.784,46.314],[6.817,46.276],[6.773,46.164],[6.953,46.017],[7.022,45.927],[6.939,45.868],[6.806,45.814],[6.788,45.781],[6.791,45.741],[6.806,45.71],[6.881,45.67],[7.015,45.501],[7.155,45.401],[7.115,45.349],[7.079,45.239],[6.982,45.215],[6.842,45.135],[6.691,45.144],[6.629,45.118],[6.633,45.069],[6.691,45.022],[6.737,44.921],[6.802,44.883],[6.939,44.859],[6.993,44.828],[7.029,44.717],[7.007,44.689],[6.961,44.677],[6.842,44.51],[6.892,44.428],[6.874,44.392],[6.899,44.336],[6.968,44.281],[7.317,44.139],[7.371,44.128],[7.637,44.165],[7.677,44.083],[7.591,43.965],[7.483,43.864],[7.493,43.767],[7.439,43.75],[7.414,43.77],[7.396,43.765],[7.378,43.732],[7.18,43.659],[6.863,43.439],[6.716,43.373],[6.658,43.262],[6.572,43.199],[6.493,43.17],[6.305,43.139],[6.115,43.073],[6.032,43.1],[5.809,43.099],[5.672,43.179],[5.405,43.229],[5.319,43.345],[5.121,43.349],[5.074,43.366],[5.06,43.444],[4.912,43.427],[4.844,43.394],[4.808,43.406],[4.786,43.401],[4.79,43.378],[4.711,43.373],[4.376,43.456],[4.225,43.479],[4.163,43.503],[4.113,43.564],[4.052,43.593],[3.911,43.564],[3.785,43.461],[3.26,43.192],[3.163,43.081],[3.051,42.915],[3.044,42.838],[3.091,42.592],[3.213,42.43],[2.968,42.467],[2.893,42.456],[2.669,42.394],[2.651,42.34],[2.201,42.422],[2.032,42.354],[1.985,42.359],[1.928,42.427],[1.705,42.503],[1.741,42.557],[1.741,42.576],[1.708,42.604],[1.503,42.642],[1.427,42.595],[1.348,42.691],[1.294,42.71],[1.208,42.713],[0.765,42.838],[0.671,42.837],[0.632,42.689],[0.254,42.692],[0.2,42.72],[-0.041,42.689],[-0.301,42.826],[-0.585,42.798],[-0.761,42.939],[-0.934,42.949],[-1.175,43.021],[-1.287,43.06],[-1.301,43.1],[-1.37,43.038],[-1.395,43.033],[-1.481,43.071],[-1.424,43.149],[-1.406,43.198],[-1.409,43.239],[-1.471,43.267],[-1.625,43.283],[-1.755,43.324],[-1.791,43.373],[-1.795,43.408],[-1.633,43.437],[-1.485,43.564],[-1.345,44.02],[-1.244,44.56],[-1.172,44.661],[-1.078,44.691],[-1.154,44.763],[-1.244,44.666],[-1.19,45.161],[-1.15,45.343],[-1.082,45.533],[-0.826,45.381],[-0.765,45.314],[-0.689,45.093],[-0.549,45.001],[-0.581,45.052],[-0.643,45.09],[-0.733,45.385],[-0.79,45.468],[-0.88,45.538],[-1.168,45.685],[-1.197,45.715],[-1.211,45.77],[-1.114,45.769],[-1.031,45.741],[-1.067,45.805],[-1.103,45.925],[-1.147,46.312],[-1.312,46.328],[-1.391,46.35],[-1.787,46.515],[-1.921,46.685],[-2.061,46.81],[-2.093,46.866],[-2.09,46.921],[-2.018,47.038],[-2.083,47.112],[-2.144,47.126],[-2.198,47.163],[-2.108,47.263],[-2.029,47.274],[-1.744,47.216],[-1.975,47.31],[-2.353,47.279],[-2.504,47.312],[-2.529,47.381],[-2.475,47.413],[-2.428,47.472],[-2.482,47.512],[-2.554,47.527],[-2.77,47.513],[-2.795,47.538],[-2.734,47.602],[-2.788,47.626],[-2.965,47.602],[-3.065,47.621],[-3.159,47.694],[-3.263,47.685],[-3.328,47.713],[-3.443,47.711],[-3.508,47.753],[-3.901,47.838],[-4.07,47.848],[-4.225,47.81],[-4.311,47.822],[-4.376,47.878],[-4.426,47.968],[-4.678,48.039],[-4.628,48.086],[-4.379,48.13],[-4.329,48.17],[-4.433,48.218],[-4.513,48.23],[-4.577,48.289],[-4.531,48.31],[-4.405,48.293],[-4.243,48.303],[-4.3,48.347],[-4.394,48.367],[-4.718,48.364],[-4.761,48.451],[-4.721,48.539],[-4.531,48.619],[-4.059,48.708],[-3.857,48.696],[-3.713,48.711],[-3.544,48.765],[-3.472,48.814],[-3.231,48.841],[-3.004,48.791],[-2.792,48.602],[-2.691,48.538],[-2.446,48.649],[-2.079,48.645],[-2.003,48.583],[-1.975,48.635],[-1.906,48.697],[-1.852,48.669],[-1.823,48.631],[-1.377,48.652],[-1.481,48.697],[-1.564,48.805],[-1.582,49.202],[-1.69,49.314],[-1.813,49.491],[-1.87,49.595],[-1.856,49.683],[-1.589,49.668],[-1.366,49.708],[-1.258,49.68],[-1.265,49.598],[-1.233,49.494],[-1.139,49.388],[-0.959,49.393],[-0.765,49.36],[-0.52,49.355],[-0.164,49.296],[-0.013,49.331],[0.135,49.402],[0.416,49.449],[0.441,49.473],[0.279,49.463],[0.128,49.508],[0.11,49.558],[0.185,49.702],[0.617,49.862],[0.923,49.911],[1.244,49.998],[1.406,50.088],[1.514,50.206],[1.593,50.253],[1.55,50.294],[1.579,50.739],[1.611,50.819],[1.672,50.885],[1.913,50.991],[2.446,51.067],[2.525,51.096],[2.536,51.05],[2.601,50.956],[2.579,50.912],[2.597,50.876],[2.759,50.751],[2.839,50.711],[3.109,50.779],[3.181,50.732],[3.235,50.662],[3.274,50.532],[3.317,50.508],[3.595,50.477],[3.627,50.458],[3.667,50.326],[3.688,50.307],[3.749,50.343],[3.951,50.336],[4.045,50.322],[4.174,50.246],[4.135,50.143],[4.192,50.095],[4.185,50.053],[4.138,49.999],[4.149,49.971],[4.369,49.945],[4.545,49.961],[4.657,50.003],[4.707,50.096],[4.819,50.154],[4.862,50.136],[4.79,49.959],[4.84,49.914],[4.869,49.787],[5.006,49.779],[5.125,49.722],[5.279,49.678],[5.506,49.511],[5.791,49.537],[5.823,49.505],[5.902,49.491],[5.96,49.454],[6.01,49.445],[6.075,49.454],[6.118,49.485],[6.179,49.499],[6.241,49.494],[6.345,49.452],[6.457,49.442],[6.536,49.395],[6.575,49.32],[6.734,49.161],[6.777,49.154],[6.849,49.202],[6.892,49.208],[7,49.18],[7.036,49.112],[7.119,49.128],[7.198,49.114],[7.45,49.152],[7.526,49.086],[7.612,49.062],[8.001,49.011],[8.134,48.973],[8.141,48.886],[7.839,48.636],[7.706,48.281],[7.616,48.157],[7.583,48.064],[7.609,48.003],[7.594,47.906],[7.54,47.774],[7.529,47.673],[7.565,47.607],[7.616,47.593]]],[[[-1.179,45.904],[-1.215,45.817],[-1.28,45.897],[-1.37,45.968],[-1.388,46.05],[-1.283,46.003],[-1.179,45.904]]]]],["DK",[[[[12.57,55.785],[12.57,55.685],[12.544,55.655],[12.321,55.587],[12.242,55.537],[12.217,55.466],[12.274,55.414],[12.386,55.386],[12.415,55.285],[12.321,55.237],[12.091,55.188],[12.066,55.07],[12.069,54.909],[12.051,54.815],[11.864,54.773],[11.742,54.916],[11.742,54.973],[11.702,55.039],[11.698,55.096],[11.655,55.186],[11.407,55.214],[11.288,55.204],[11.169,55.329],[11.191,55.466],[11.13,55.535],[11.122,55.601],[11.007,55.645],[10.978,55.721],[11.05,55.74],[11.223,55.732],[11.324,55.752],[11.464,55.879],[11.475,55.943],[11.626,55.957],[11.695,55.909],[11.691,55.73],[11.821,55.697],[11.857,55.771],[11.922,55.829],[11.936,55.896],[11.914,55.938],[11.868,55.968],[12.04,56.053],[12.22,56.119],[12.325,56.122],[12.58,56.065],[12.609,56.034],[12.526,55.919],[12.57,55.785]]],[[[9.74,54.825],[9.661,54.834],[9.617,54.855],[9.34,54.806],[9.254,54.808],[9.185,54.844],[8.905,54.897],[8.671,54.903],[8.638,55.046],[8.573,55.134],[8.671,55.155],[8.653,55.329],[8.617,55.419],[8.131,55.6],[8.203,55.982],[8.12,56.14],[8.163,56.606],[8.282,56.617],[8.473,56.565],[8.552,56.56],[8.606,56.514],[8.671,56.495],[8.717,56.544],[8.735,56.627],[8.887,56.735],[9.067,56.794],[9.196,56.702],[9.254,57.011],[9.11,57.044],[8.991,57.016],[8.876,56.888],[8.771,56.725],[8.602,56.711],[8.469,56.664],[8.267,56.754],[8.267,56.815],[8.285,56.853],[8.426,56.985],[8.62,57.112],[8.811,57.11],[8.951,57.15],[9.038,57.155],[9.297,57.146],[9.434,57.174],[9.553,57.233],[9.815,57.478],[9.963,57.58],[10.258,57.617],[10.532,57.735],[10.611,57.737],[10.482,57.648],[10.46,57.615],[10.446,57.563],[10.536,57.448],[10.518,57.379],[10.525,57.244],[10.438,57.172],[10.338,57.021],[10.294,56.999],[10.284,56.62],[10.384,56.554],[10.489,56.52],[10.845,56.521],[10.928,56.443],[10.856,56.296],[10.755,56.242],[10.622,56.202],[10.539,56.2],[10.428,56.277],[10.374,56.252],[10.32,56.212],[10.226,56.006],[10.183,55.865],[10.161,55.853],[10.107,55.874],[10.017,55.876],[9.905,55.843],[10.024,55.761],[9.999,55.735],[9.898,55.707],[9.772,55.608],[9.661,55.558],[9.592,55.494],[9.671,55.266],[9.643,55.206],[9.506,55.117],[9.455,55.039],[9.571,55.041],[9.689,55.001],[9.733,54.968],[9.704,54.928],[9.74,54.825]]],[[[10.644,55.61],[10.82,55.322],[10.784,55.27],[10.809,55.204],[10.784,55.133],[10.626,55.053],[10.442,55.049],[9.988,55.164],[9.967,55.206],[9.931,55.228],[9.859,55.357],[9.862,55.516],[9.995,55.535],[10.287,55.61],[10.352,55.6],[10.424,55.56],[10.507,55.558],[10.622,55.613],[10.644,55.61]]],[[[11.36,54.891],[11.54,54.829],[11.659,54.832],[11.738,54.808],[11.76,54.768],[11.767,54.68],[11.68,54.653],[11.587,54.662],[11.457,54.629],[11.036,54.773],[11.058,54.94],[11.259,54.952],[11.36,54.891]]],[[[10.734,54.751],[10.69,54.745],[10.622,54.851],[10.856,55.053],[10.924,55.159],[10.95,55.157],[10.921,55.061],[10.734,54.751]]],[[[12.548,54.966],[12.512,54.95],[12.357,54.962],[12.184,54.893],[12.12,54.914],[12.163,54.975],[12.26,55.022],[12.274,55.065],[12.31,55.041],[12.469,55.018],[12.548,54.966]]],[[[12.667,55.596],[12.552,55.556],[12.519,55.615],[12.598,55.679],[12.62,55.679],[12.667,55.596]]],[[[10.485,54.848],[10.417,54.838],[10.341,54.858],[10.201,54.962],[10.503,54.86],[10.485,54.848]]],[[[10.06,54.886],[9.956,54.872],[9.905,54.897],[9.805,54.905],[9.772,55.06],[9.83,55.058],[9.999,54.987],[10.06,54.886]]],[[[10.608,55.784],[10.59,55.765],[10.528,55.784],[10.521,55.848],[10.543,55.907],[10.518,55.959],[10.546,55.992],[10.662,55.877],[10.608,55.784]]],[[[11.054,57.252],[11.011,57.23],[10.874,57.263],[10.935,57.308],[11.086,57.33],[11.173,57.323],[11.054,57.252]]],[[[15.086,55.022],[15.05,55.004],[14.884,55.034],[14.683,55.103],[14.715,55.239],[14.766,55.298],[15.133,55.145],[15.136,55.087],[15.086,55.022]]]]],["CZ",[[[[18.834,49.511],[18.751,49.494],[18.596,49.491],[18.416,49.392],[18.366,49.336],[18.16,49.258],[18.11,49.18],[18.085,49.065],[18.052,49.036],[17.912,48.999],[17.894,48.972],[17.757,48.888],[17.624,48.841],[17.484,48.827],[17.188,48.86],[17.134,48.841],[17.062,48.781],[16.987,48.676],[16.954,48.598],[16.882,48.704],[16.713,48.734],[16.544,48.796],[16.479,48.8],[16.368,48.739],[16.058,48.755],[15.824,48.864],[15.702,48.86],[15.403,48.958],[15.309,48.973],[15.162,48.946],[15.14,48.97],[15.068,48.998],[14.992,49.001],[14.971,48.984],[14.949,48.827],[14.924,48.772],[14.823,48.774],[14.787,48.748],[14.708,48.671],[14.69,48.6],[14.488,48.626],[14.431,48.616],[14.366,48.576],[14.19,48.579],[14.049,48.602],[13.988,48.692],[13.815,48.767],[13.686,48.876],[13.549,48.959],[13.441,48.956],[13.401,48.977],[13.34,49.06],[13.29,49.098],[13.228,49.112],[13.142,49.159],[12.915,49.331],[12.814,49.329],[12.681,49.414],[12.631,49.461],[12.501,49.64],[12.39,49.739],[12.498,49.853],[12.512,49.895],[12.458,49.956],[12.278,50.043],[12.21,50.098],[12.174,50.176],[12.127,50.213],[12.091,50.268],[12.091,50.301],[12.134,50.312],[12.174,50.289],[12.278,50.182],[12.357,50.274],[12.454,50.35],[12.548,50.393],[12.706,50.409],[12.764,50.432],[12.944,50.407],[12.966,50.416],[13.016,50.491],[13.182,50.51],[13.239,50.577],[13.308,50.586],[13.376,50.622],[13.437,50.602],[13.473,50.617],[13.527,50.694],[13.556,50.704],[13.7,50.716],[13.898,50.761],[14.2,50.862],[14.37,50.899],[14.377,50.914],[14.301,50.952],[14.254,51.003],[14.283,51.029],[14.319,51.037],[14.546,50.994],[14.56,50.954],[14.596,50.919],[14.625,50.914],[14.614,50.855],[14.722,50.815],[14.766,50.819],[14.809,50.859],[14.895,50.862],[14.982,50.886],[14.992,51.015],[15.259,50.959],[15.277,50.883],[15.356,50.812],[15.73,50.741],[15.892,50.676],[15.95,50.671],[16.008,50.612],[16.281,50.655],[16.36,50.621],[16.418,50.574],[16.378,50.517],[16.281,50.484],[16.209,50.425],[16.231,50.393],[16.335,50.367],[16.486,50.249],[16.598,50.123],[16.638,50.102],[16.681,50.098],[16.843,50.187],[16.99,50.237],[16.994,50.26],[16.868,50.414],[16.879,50.426],[17.152,50.378],[17.415,50.254],[17.556,50.265],[17.703,50.307],[17.721,50.298],[17.736,50.23],[17.71,50.194],[17.588,50.157],[17.628,50.116],[17.682,50.1],[17.793,50.006],[17.876,49.971],[17.984,49.999],[18.027,50.036],[18.099,49.992],[18.204,49.965],[18.304,49.914],[18.348,49.93],[18.517,49.902],[18.564,49.879],[18.578,49.841],[18.567,49.819],[18.596,49.758],[18.808,49.614],[18.834,49.511]]]]],["HR",[[[[13.578,45.517],[13.614,45.477],[13.88,45.428],[13.934,45.449],[13.97,45.482],[13.97,45.503],[13.992,45.51],[14.085,45.477],[14.37,45.482],[14.427,45.506],[14.535,45.645],[14.568,45.658],[14.593,45.651],[14.607,45.611],[14.65,45.571],[14.794,45.479],[14.848,45.467],[14.899,45.493],[14.956,45.5],[15.111,45.451],[15.241,45.442],[15.338,45.467],[15.284,45.579],[15.291,45.612],[15.356,45.645],[15.273,45.718],[15.277,45.732],[15.453,45.798],[15.626,45.835],[15.669,45.904],[15.666,46.048],[15.597,46.109],[15.608,46.171],[15.637,46.201],[16,46.305],[16.065,46.371],[16.227,46.373],[16.252,46.388],[16.238,46.484],[16.321,46.534],[16.429,46.524],[16.569,46.486],[16.749,46.416],[16.872,46.34],[16.94,46.253],[17.034,46.187],[17.149,46.14],[17.242,46.076],[17.311,45.996],[17.408,45.951],[17.53,45.94],[17.606,45.914],[17.638,45.868],[17.808,45.791],[17.962,45.77],[18.358,45.753],[18.535,45.796],[18.664,45.908],[18.722,45.899],[18.906,45.932],[18.895,45.866],[18.841,45.836],[18.895,45.767],[18.949,45.656],[18.916,45.6],[18.952,45.559],[19.064,45.515],[19.032,45.503],[19.006,45.467],[19.006,45.399],[19.093,45.336],[19.33,45.269],[19.399,45.213],[19.402,45.189],[19.388,45.173],[19.204,45.168],[19.136,45.196],[19.129,45.152],[19.064,45.137],[19.1,44.974],[19.086,44.927],[19.06,44.911],[19.01,44.92],[18.996,44.904],[19.006,44.869],[18.942,44.866],[18.837,44.883],[18.787,44.915],[18.78,44.977],[18.747,45.027],[18.664,45.078],[18.488,45.086],[18.286,45.135],[18.139,45.119],[17.995,45.142],[17.876,45.078],[17.811,45.078],[17.689,45.158],[17.653,45.163],[17.502,45.121],[17.325,45.164],[17.26,45.17],[17.21,45.156],[17.127,45.171],[16.918,45.277],[16.792,45.197],[16.53,45.217],[16.292,45.008],[16.231,45.027],[16.029,45.189],[15.964,45.211],[15.889,45.217],[15.788,45.178],[15.738,44.857],[15.738,44.765],[15.882,44.682],[16.051,44.538],[16.105,44.52],[16.213,44.215],[16.299,44.125],[16.591,43.913],[16.713,43.779],[17.084,43.517],[17.25,43.47],[17.275,43.446],[17.275,43.343],[17.293,43.305],[17.401,43.199],[17.624,43.043],[17.649,43.007],[17.656,42.981],[17.642,42.96],[17.584,42.939],[17.329,43.114],[17.131,43.211],[16.904,43.392],[16.602,43.463],[16.393,43.543],[16.13,43.507],[15.986,43.52],[15.943,43.569],[15.943,43.656],[15.5,43.909],[15.187,44.171],[15.122,44.257],[15.284,44.29],[15.471,44.272],[15.27,44.383],[14.982,44.604],[14.895,44.706],[14.884,44.819],[14.906,44.972],[14.856,45.081],[14.632,45.224],[14.55,45.298],[14.388,45.342],[14.312,45.338],[14.269,45.283],[14.236,45.159],[13.966,44.836],[13.862,44.838],[13.628,45.109],[13.603,45.232],[13.516,45.482],[13.578,45.517]]],[[[16.652,42.996],[16.836,42.968],[16.972,42.982],[17.095,42.965],[17.188,42.916],[16.976,42.929],[16.85,42.896],[16.695,42.934],[16.652,42.996]]],[[[17.196,43.126],[16.681,43.123],[16.551,43.144],[16.375,43.213],[16.522,43.229],[16.656,43.213],[16.699,43.175],[17.196,43.126]]],[[[16.785,43.271],[16.627,43.269],[16.49,43.286],[16.422,43.317],[16.45,43.387],[16.836,43.35],[16.89,43.314],[16.785,43.271]]],[[[15.23,44.062],[15.248,44.027],[15.122,44.093],[15.064,44.158],[15.23,44.062]]],[[[14.809,44.977],[14.686,44.956],[14.629,44.994],[14.614,45.026],[14.51,45.036],[14.438,45.099],[14.524,45.147],[14.571,45.225],[14.74,45.066],[14.809,44.977]]],[[[14.83,44.758],[14.856,44.715],[14.679,44.77],[14.661,44.8],[14.69,44.849],[14.755,44.845],[14.83,44.758]]],[[[15.187,44.336],[15.162,44.309],[14.913,44.486],[14.884,44.545],[14.74,44.698],[14.856,44.618],[14.899,44.611],[15.241,44.35],[15.187,44.336]]],[[[15.19,43.922],[15.201,43.897],[15.136,43.908],[14.892,44.126],[14.866,44.168],[14.953,44.118],[15.19,43.922]]],[[[15.37,43.974],[15.439,43.899],[15.374,43.915],[15.27,44.01],[15.37,43.974]]],[[[14.488,44.659],[14.481,44.621],[14.42,44.67],[14.312,44.901],[14.301,44.941],[14.341,44.98],[14.341,45.02],[14.287,45.145],[14.33,45.164],[14.359,45.168],[14.37,45.081],[14.395,45.031],[14.467,44.97],[14.452,44.869],[14.467,44.725],[14.488,44.659]]],[[[17.61,42.769],[17.743,42.701],[17.343,42.79],[17.433,42.8],[17.61,42.769]]],[[[18.438,42.56],[18.438,42.522],[18.517,42.434],[18.16,42.633],[17.826,42.797],[17.584,42.837],[17.257,42.968],[17.044,43.015],[17.221,43.026],[17.725,42.85],[17.667,42.897],[17.739,42.915],[17.8,42.902],[17.84,42.845],[18.124,42.691],[18.304,42.599],[18.438,42.56]]]]],["BA",[[[[19.194,43.533],[19.078,43.517],[18.974,43.543],[18.952,43.527],[18.942,43.496],[19.035,43.357],[19.028,43.293],[18.978,43.286],[18.934,43.34],[18.852,43.347],[18.675,43.231],[18.628,43.154],[18.625,43.027],[18.459,42.998],[18.445,42.968],[18.466,42.777],[18.542,42.673],[18.546,42.642],[18.456,42.564],[18.304,42.599],[18.124,42.691],[17.84,42.845],[17.8,42.902],[17.739,42.915],[17.667,42.897],[17.584,42.939],[17.642,42.96],[17.656,42.981],[17.624,43.043],[17.401,43.199],[17.293,43.305],[17.275,43.343],[17.275,43.446],[17.25,43.47],[17.084,43.517],[16.713,43.779],[16.591,43.913],[16.299,44.125],[16.213,44.215],[16.105,44.52],[16.051,44.538],[15.882,44.682],[15.738,44.765],[15.738,44.857],[15.788,45.178],[15.889,45.217],[15.964,45.211],[16.029,45.189],[16.231,45.027],[16.292,45.008],[16.53,45.217],[16.792,45.197],[16.918,45.277],[17.127,45.171],[17.21,45.156],[17.26,45.17],[17.325,45.164],[17.502,45.121],[17.653,45.163],[17.689,45.158],[17.811,45.078],[17.876,45.078],[17.995,45.142],[18.139,45.119],[18.286,45.135],[18.488,45.086],[18.664,45.078],[18.747,45.027],[18.78,44.977],[18.787,44.915],[18.837,44.883],[18.942,44.866],[19.042,44.871],[19.237,44.915],[19.348,44.882],[19.356,44.859],[19.334,44.781],[19.291,44.698],[19.15,44.527],[19.118,44.361],[19.15,44.302],[19.233,44.281],[19.338,44.225],[19.546,44.074],[19.582,44.043],[19.582,44.012],[19.55,43.987],[19.449,43.979],[19.305,43.993],[19.244,43.965],[19.489,43.703],[19.496,43.642],[19.453,43.562],[19.399,43.567],[19.359,43.593],[19.302,43.592],[19.255,43.585],[19.194,43.533]]]]],["BE",[[[[4.225,51.386],[4.372,51.357],[4.405,51.367],[4.383,51.428],[4.502,51.475],[4.588,51.423],[4.635,51.421],[4.757,51.49],[4.811,51.452],[4.822,51.412],[4.847,51.404],[4.945,51.407],[5.031,51.47],[5.06,51.452],[5.099,51.346],[5.215,51.279],[5.312,51.26],[5.477,51.286],[5.607,51.199],[5.751,51.169],[5.827,51.126],[5.819,51.086],[5.751,50.989],[5.74,50.959],[5.751,50.951],[5.647,50.867],[5.639,50.843],[5.693,50.775],[5.747,50.76],[5.992,50.751],[6.237,50.596],[6.169,50.546],[6.179,50.522],[6.205,50.499],[6.295,50.485],[6.341,50.452],[6.363,50.317],[6.176,50.232],[6.118,50.121],[6.089,50.154],[5.978,50.168],[5.866,50.083],[5.744,49.919],[5.726,49.808],[5.787,49.76],[5.881,49.645],[5.816,49.553],[5.791,49.537],[5.506,49.511],[5.279,49.678],[5.125,49.722],[5.006,49.779],[4.869,49.787],[4.84,49.914],[4.79,49.959],[4.862,50.136],[4.819,50.154],[4.707,50.096],[4.657,50.003],[4.545,49.961],[4.369,49.945],[4.149,49.971],[4.138,49.999],[4.185,50.053],[4.192,50.095],[4.135,50.143],[4.174,50.246],[4.045,50.322],[3.951,50.336],[3.749,50.343],[3.688,50.307],[3.667,50.326],[3.627,50.458],[3.595,50.477],[3.317,50.508],[3.274,50.532],[3.235,50.662],[3.181,50.732],[3.109,50.779],[2.839,50.711],[2.759,50.751],[2.597,50.876],[2.579,50.912],[2.601,50.956],[2.536,51.05],[2.525,51.096],[2.961,51.265],[3.224,51.352],[3.35,51.378],[3.379,51.291],[3.433,51.246],[3.472,51.242],[3.58,51.286],[3.681,51.275],[3.832,51.213],[3.901,51.208],[4.041,51.247],[4.174,51.306],[4.225,51.386]]]]],["AT",[[[[9.527,47.27],[9.61,47.392],[9.625,47.466],[9.524,47.524],[9.549,47.534],[9.65,47.525],[9.751,47.576],[10.035,47.473],[10.075,47.428],[10.068,47.394],[10.096,47.38],[10.201,47.364],[10.183,47.279],[10.312,47.314],[10.37,47.366],[10.402,47.418],[10.438,47.551],[10.658,47.548],[10.741,47.524],[10.874,47.52],[10.87,47.501],[10.896,47.47],[10.982,47.399],[11.043,47.394],[11.191,47.425],[11.212,47.414],[11.299,47.425],[11.374,47.459],[11.392,47.487],[11.716,47.583],[12.184,47.619],[12.202,47.647],[12.195,47.709],[12.21,47.718],[12.364,47.689],[12.483,47.637],[12.685,47.67],[12.771,47.64],[12.796,47.607],[12.782,47.564],[12.811,47.543],[12.969,47.475],[13.016,47.479],[13.056,47.656],[13.034,47.699],[12.897,47.722],[12.955,47.808],[12.955,47.89],[12.76,48.076],[12.76,48.107],[12.814,48.161],[13.081,48.275],[13.322,48.331],[13.376,48.362],[13.408,48.393],[13.459,48.565],[13.488,48.583],[13.675,48.524],[13.725,48.543],[13.786,48.588],[13.815,48.767],[13.988,48.692],[14.049,48.602],[14.19,48.579],[14.366,48.576],[14.431,48.616],[14.488,48.626],[14.69,48.6],[14.708,48.671],[14.787,48.748],[14.823,48.774],[14.924,48.772],[14.949,48.827],[14.971,48.984],[14.992,49.001],[15.068,48.998],[15.14,48.97],[15.162,48.946],[15.309,48.973],[15.403,48.958],[15.702,48.86],[15.824,48.864],[16.058,48.755],[16.368,48.739],[16.479,48.8],[16.544,48.796],[16.713,48.734],[16.882,48.704],[16.954,48.598],[16.944,48.551],[16.864,48.442],[16.864,48.387],[16.972,48.197],[17.07,48.083],[17.088,48.039],[17.149,48.006],[17.088,47.963],[17.077,47.9],[17.041,47.873],[17.03,47.838],[17.066,47.708],[16.825,47.694],[16.785,47.678],[16.591,47.751],[16.551,47.748],[16.422,47.675],[16.432,47.656],[16.641,47.609],[16.677,47.536],[16.623,47.447],[16.515,47.404],[16.443,47.399],[16.436,47.367],[16.461,47.274],[16.418,47.223],[16.44,47.145],[16.483,47.14],[16.494,47.123],[16.454,47.006],[16.332,47.003],[16.252,46.972],[16.094,46.864],[16.036,46.845],[15.975,46.802],[15.979,46.706],[15.957,46.678],[15.759,46.711],[15.633,46.699],[15.547,46.654],[15.439,46.63],[15.216,46.644],[14.892,46.605],[14.841,46.581],[14.758,46.499],[14.596,46.435],[14.55,46.401],[13.833,46.512],[13.491,46.555],[13.167,46.572],[12.48,46.673],[12.39,46.703],[12.156,46.935],[12.13,46.986],[12.202,47.06],[12.199,47.076],[12.17,47.083],[11.774,46.986],[11.529,46.998],[11.245,46.975],[11.133,46.937],[11.025,46.796],[10.993,46.777],[10.827,46.776],[10.759,46.793],[10.69,46.847],[10.478,46.855],[10.453,46.866],[10.456,46.899],[10.417,46.965],[10.348,46.986],[10.179,46.862],[10.132,46.852],[9.995,46.885],[9.877,46.937],[9.844,47.008],[9.743,47.038],[9.581,47.057],[9.61,47.107],[9.556,47.185],[9.527,47.27]]]]],["AL",[[[[19.341,41.87],[19.363,42.069],[19.33,42.13],[19.28,42.173],[19.399,42.342],[19.597,42.566],[19.654,42.628],[19.705,42.647],[19.741,42.607],[19.737,42.526],[19.788,42.475],[20.065,42.547],[20.104,42.524],[20.241,42.338],[20.349,42.309],[20.407,42.276],[20.486,42.224],[20.522,42.172],[20.576,42.014],[20.583,41.918],[20.504,41.706],[20.515,41.574],[20.45,41.521],[20.493,41.392],[20.49,41.272],[20.569,41.128],[20.655,41.062],[20.709,40.929],[20.742,40.906],[20.871,40.918],[20.932,40.903],[20.965,40.851],[20.954,40.776],[21.03,40.658],[21.03,40.623],[20.95,40.495],[20.806,40.446],[20.716,40.293],[20.659,40.118],[20.605,40.083],[20.407,40.05],[20.385,40.017],[20.31,39.979],[20.31,39.951],[20.382,39.842],[20.382,39.802],[20.306,39.797],[20.274,39.701],[20.205,39.653],[20.13,39.661],[20.061,39.7],[20,39.71],[19.996,39.8],[19.852,40.043],[19.485,40.21],[19.399,40.285],[19.323,40.408],[19.359,40.41],[19.442,40.375],[19.46,40.406],[19.438,40.47],[19.345,40.621],[19.338,40.663],[19.384,40.792],[19.46,40.934],[19.456,41.106],[19.482,41.236],[19.453,41.321],[19.442,41.425],[19.496,41.562],[19.546,41.597],[19.575,41.64],[19.579,41.788],[19.467,41.856],[19.341,41.87]]]]]];
+const VALHALLA = "https://valhalla1.openstreetmap.de";
+const PHOTON = "https://photon.komoot.io/api/";
+const OVERPASS = ["https://overpass-api.de/api/interpreter","https://overpass.private.coffee/api/interpreter"];
+const STYLE = "https://tiles.openfreemap.org/styles/liberty";
+
+const DEFAULT_G = {
+  zug:{name:"VW Multivan T7 (2025)",laenge:4.97,breite:1.94,hoehe:1.90,radstand:3.12,zgm:3000,leer:2200,anhaengelast:2000},
+  ww:{name:"Hobby Excellent 465 (2011)",laenge:7.05,breite:2.30,hoehe:2.61,zgm:1500},
+  fs:"BE", tempo100:false
+};
+const PRESETS = [
+  {n:"Rovinj (Istrien)",lat:45.0812,lon:13.6387},
+  {n:"Insel Krk",lat:45.0270,lon:14.5750},
+  {n:"Zadar",lat:44.1194,lon:15.2314},
+  {n:"Makarska",lat:43.2969,lon:17.0178},
+  {n:"Gardasee (Bardolino)",lat:45.5470,lon:10.7240},
+  {n:"Cavallino (Venedig)",lat:45.4720,lon:12.5480},
+  {n:"Toskana (Castiglione d. P.)",lat:42.7626,lon:10.8827}
+];
+const CC_NAME = {DE:"Deutschland",AT:"Österreich",CH:"Schweiz",IT:"Italien",SI:"Slowenien",HR:"Kroatien",BA:"Bosnien-Herz.",ME:"Montenegro",HU:"Ungarn",FR:"Frankreich",CZ:"Tschechien",SM:"San Marino",LI:"Liechtenstein",RS:"Serbien",AL:"Albanien",NL:"Niederlande",BE:"Belgien",LU:"Luxemburg",DK:"Dänemark",PL:"Polen",SK:"Slowakei"};
+
+/* ---------- Zustand ---------- */
+const store = {
+  get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+};
+let G = structuredClone(store.get("gespann",DEFAULT_G));
+G.zug = Object.assign({},DEFAULT_G.zug,G.zug); G.ww = Object.assign({},DEFAULT_G.ww,G.ww);
+let WPS = [
+  {label:"München, Marienplatz",lat:48.1374,lon:11.5755},
+  {label:"Rovinj (Istrien), Kroatien",lat:45.0812,lon:13.6387}
+];
+let R = null;          // Routenmodell
+let pickIdx = null;    // Wegpunkt, der per Karte gesetzt wird
+const $ = s => document.querySelector(s);
+const el = (t,a={},...c)=>{const e=document.createElement(t);for(const k in a){if(k==="class")e.className=a[k];else if(k.startsWith("on"))e.addEventListener(k.slice(2),a[k]);else e.setAttribute(k,a[k])}for(const x of c)e.append(x);return e};
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ---------- Geo-Helfer ---------- */
+const RE = 6378137, D2R = Math.PI/180;
+const toM = (lng,lat)=>[RE*lng*D2R, RE*Math.log(Math.tan(Math.PI/4+lat*D2R/2))];
+const fromM = (x,y)=>[x/RE/D2R, (2*Math.atan(Math.exp(y/RE))-Math.PI/2)/D2R];
+function hav(a,b){const dLat=(b[1]-a[1])*D2R,dLon=(b[0]-a[0])*D2R,la1=a[1]*D2R,la2=b[1]*D2R;const h=Math.sin(dLat/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;return 2*6371008.8*Math.asin(Math.sqrt(h))}
+function decode6(str){let i=0,lat=0,lng=0;const out=[];while(i<str.length){let b,s=0,r=0;do{b=str.charCodeAt(i++)-63;r|=(b&31)<<s;s+=5}while(b>=32);lat+=(r&1)?~(r>>1):(r>>1);s=0;r=0;do{b=str.charCodeAt(i++)-63;r|=(b&31)<<s;s+=5}while(b>=32);lng+=(r&1)?~(r>>1):(r>>1);out.push([lng/1e6,lat/1e6])}return out}
+function encode6(pts){let out="",pl=0,pg=0;const e=v=>{v=v<0?~(v<<1):v<<1;while(v>=32){out+=String.fromCharCode((32|(v&31))+63);v>>=5}out+=String.fromCharCode(v+63)};for(const [lng,lat] of pts){const a=Math.round(lat*1e6),b=Math.round(lng*1e6);e(a-pl);e(b-pg);pl=a;pg=b}return out}
+const angDiff=(a,b)=>((b-a+540)%360)-180;
+/* Douglas-Peucker in Metern */
+function simplify(pts,eps){
+  const n=pts.length;if(n<3)return pts.slice();const keep=new Uint8Array(n);keep[0]=keep[n-1]=1;const st=[[0,n-1]];
+  const k=111320*Math.cos(pts[0][1]*D2R);
+  while(st.length){const [a,b]=st.pop();const A=pts[a],B=pts[b];const ax=A[0]*k,ay=A[1]*110540,dx=B[0]*k-ax,dy=B[1]*110540-ay,L=dx*dx+dy*dy;let mx=0,mi=-1;
+    for(let i=a+1;i<b;i++){const px=pts[i][0]*k-ax,py=pts[i][1]*110540-ay;let t=L?(px*dx+py*dy)/L:0;t=t<0?0:t>1?1:t;const d=Math.hypot(px-t*dx,py-t*dy);if(d>mx){mx=d;mi=i}}
+    if(mx>eps){keep[mi]=1;st.push([a,mi],[mi,b])}}
+  return pts.filter((_,i)=>keep[i]);
+}
+
+/* Länder-Erkennung über vereinfachte Grenzen (Natural Earth 1:50 Mio.) */
+const POLYS = [];
+for(const [cc,polys] of BORDERS){for(const p of polys){let x0=180,y0=90,x1=-180,y1=-90;for(const [x,y] of p[0]){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}POLYS.push({cc,p,bb:[x0,y0,x1,y1]})}}
+function inRing(x,y,r){let c=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const [xi,yi]=r[i],[xj,yj]=r[j];if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))c=!c}return c}
+function countryAt(lng,lat){
+  for(const P of POLYS){const b=P.bb;if(lng<b[0]||lng>b[2]||lat<b[1]||lat>b[3])continue;if(inRing(lng,lat,P.p[0])){let hole=false;for(let k=1;k<P.p.length;k++)if(inRing(lng,lat,P.p[k])){hole=true;break}if(!hole)return P.cc}}
+  return null;
+}
+
+/* ---------- Gespann-Kennwerte ---------- */
+const gesamt = ()=>({
+  laenge:+(G.zug.laenge+G.ww.laenge).toFixed(2),
+  breite:Math.max(G.zug.breite,G.ww.breite),
+  hoehe:Math.max(G.zug.hoehe,G.ww.hoehe),
+  zgm:G.zug.zgm+G.ww.zgm
+});
+/* Tempolimits für Pkw mit Wohnwagen (Richtwerte) */
+function caps(cc){
+  const heavy = gesamt().zgm>3500;
+  switch(cc){
+    case "DE": return {ab:G.tempo100?100:80,land:80,ort:50};
+    case "AT": return heavy?{ab:80,land:70,ort:50}:{ab:100,land:80,ort:50};
+    case "CH": return {ab:80,land:80,ort:50};
+    case "IT": return {ab:80,land:70,ort:50};
+    case "SI": return {ab:80,land:80,ort:50};
+    case "HR": return {ab:90,land:80,ort:50};
+    case "FR": return heavy?{ab:90,land:80,ort:50}:{ab:130,land:80,ort:50};
+    case "HU": return {ab:80,land:70,ort:50};
+    case "SM": return {ab:80,land:70,ort:50};
+    default: return {ab:80,land:80,ort:50};
+  }
+}
+const HWY_RE = /^(A ?\d|E ?\d|Autobahn|Autostrada|Autocesta|Avtocesta|Raccordo|Tangenziale|Brennerautobahn|Tauernautobahn|Inntalautobahn|Karawankenautobahn)/i;
+
+/* ---------- Formatierung ---------- */
+const fmtM = v=>v.toFixed(2).replace(".",",")+" m";
+const fmtKg = v=>v.toLocaleString("de-DE")+" kg";
+const fmtKm=m=>m>=10000?Math.round(m/1000).toLocaleString("de-DE")+" km":m>=1000?(m/1000).toFixed(1).replace(".",",")+" km":(m<100?Math.max(0,Math.round(m/10)*10):Math.round(m/50)*50)+" m";
+const fmtDur=s=>{s=Math.max(0,s);const h=Math.floor(s/3600),m=Math.round((s%3600)/60);return h?`${h} h ${String(m).padStart(2,"0")} min`:`${m} min`};
+const fmtClock=d=>d.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"});
+const pct=g=>(Math.round(Math.abs(g)*10)/10).toString().replace(".",",")+" %";
+
+/* ---------- Gespann-Tab ---------- */
+const FIELDS = ["zug_name","zug_laenge","zug_breite","zug_hoehe","zug_radstand","zug_zgm","zug_leer","zug_anhaengelast","ww_name","ww_laenge","ww_breite","ww_hoehe","ww_zgm"];
+function fillGespannForm(){
+  for(const id of FIELDS){const [o,k]=id.split("_");$("#"+id).value=G[o][k]}
+  $("#fs").value=G.fs; $("#tempo100").checked=G.tempo100;
+}
+function readGespannForm(){
+  for(const id of FIELDS){const [o,k]=id.split("_");const v=$("#"+id).value;G[o][k]=k==="name"?v:(parseFloat(v)||0)}
+  G.fs=$("#fs").value; G.tempo100=$("#tempo100").checked;
+  store.set("gespann",G); renderGespann(); markRouteStale();
+}
+function renderGespann(){ renderSideview(); renderChecks(); }
+
+function renderSideview(){
+  const z=G.zug,w=G.ww,g=gesamt();
+  const W=380,pad=14,ground=112;
+  const sc=Math.min((W-2*pad-20)/Math.max(g.laenge,6), 70/Math.max(g.hoehe,1.5));
+  const x0=pad+4, deich=1.3, bodyL=Math.max(w.laenge-deich,1);
+  const wwBodyX=x0, wwBodyW=bodyL*sc, wwTop=ground-w.hoehe*sc, wwBase=ground-0.35*sc;
+  const carW=z.laenge*sc, carTop=ground-z.hoehe*sc, carBase=ground-0.28*sc;
+  const cx=x0+w.laenge*sc, r=0.33*sc, acH=0.22*sc, s=[];
+  s.push(`<line class="sv-ground" x1="${pad}" y1="${ground}" x2="${W-pad}" y2="${ground}" stroke-width="1.5"/>`);
+  s.push(`<rect x="${wwBodyX}" y="${wwTop+acH}" width="${wwBodyW}" height="${wwBase-wwTop-acH}" rx="${0.35*sc}" fill="#f4f5f2" stroke="#8792a0" stroke-width="1.2"/>`);
+  s.push(`<rect x="${wwBodyX+wwBodyW*0.42}" y="${wwTop}" width="${0.75*sc}" height="${acH+1}" rx="2" fill="#dfe3e6" stroke="#8792a0" stroke-width="1"/>`);
+  s.push(`<rect x="${wwBodyX}" y="${wwBase-(wwBase-wwTop)*0.42}" width="${wwBodyW}" height="${Math.max(3,0.1*sc)}" fill="#1b4d9b" opacity=".85"/>`);
+  s.push(`<rect x="${wwBodyX+wwBodyW*0.12}" y="${wwTop+acH+(wwBase-wwTop)*0.12}" width="${wwBodyW*0.22}" height="${(wwBase-wwTop)*0.22}" rx="3" fill="#2b3440"/>`);
+  s.push(`<rect x="${wwBodyX+wwBodyW*0.66}" y="${wwTop+acH+(wwBase-wwTop)*0.12}" width="${wwBodyW*0.22}" height="${(wwBase-wwTop)*0.22}" rx="3" fill="#2b3440"/>`);
+  s.push(`<line x1="${wwBodyX+wwBodyW}" y1="${wwBase-4}" x2="${cx}" y2="${ground-0.45*sc}" stroke="#4a5563" stroke-width="3"/>`);
+  s.push(`<circle cx="${wwBodyX+wwBodyW*0.52}" cy="${ground-r}" r="${r}" fill="#20262e"/>`);
+  const fx=cx+carW;
+  s.push(`<path d="M${cx} ${carBase} L${cx} ${carTop+4} Q${cx} ${carTop} ${cx+6} ${carTop} L${fx-carW*0.24} ${carTop} L${fx-carW*0.05} ${carTop+(carBase-carTop)*0.45} Q${fx} ${carTop+(carBase-carTop)*0.5} ${fx} ${carTop+(carBase-carTop)*0.62} L${fx} ${carBase} Z" fill="#7d8b99" stroke="#4c5866" stroke-width="1.2"/>`);
+  s.push(`<path d="M${cx+carW*0.08} ${carTop+(carBase-carTop)*0.12} L${fx-carW*0.26} ${carTop+(carBase-carTop)*0.12} L${fx-carW*0.1} ${carTop+(carBase-carTop)*0.42} L${cx+carW*0.08} ${carTop+(carBase-carTop)*0.42} Z" fill="#2b3440"/>`);
+  const rear=cx+0.95*sc, front=rear+z.radstand*sc;
+  s.push(`<circle cx="${rear}" cy="${ground-r}" r="${r}" fill="#20262e"/><circle cx="${Math.min(front,fx-r)}" cy="${ground-r}" r="${r}" fill="#20262e"/>`);
+  const dimY=ground+18;
+  s.push(`<line class="sv-dim" x1="${x0}" y1="${dimY}" x2="${fx}" y2="${dimY}" stroke-width="1"/><line class="sv-dim" x1="${x0}" y1="${dimY-5}" x2="${x0}" y2="${dimY+5}"/><line class="sv-dim" x1="${fx}" y1="${dimY-5}" x2="${fx}" y2="${dimY+5}"/>`);
+  s.push(`<text class="sv-txt" x="${(x0+fx)/2}" y="${dimY+14}" text-anchor="middle" font-size="13">Gesamtlänge ${fmtM(g.laenge)}</text>`);
+  s.push(`<line class="sv-dim" x1="${x0-6}" y1="${wwTop}" x2="${x0-6}" y2="${ground}" stroke-width="1"/>`);
+  s.push(`<text class="sv-txt" x="${x0+2}" y="${wwTop-6}" font-size="13">Höhe ${fmtM(g.hoehe)} · Breite ${fmtM(g.breite)}</text>`);
+  s.push(`<text class="sv-sub" x="${W-pad}" y="${carTop-6}" text-anchor="end" font-size="12">${fmtKg(g.zgm)} zul. gesamt</text>`);
+  $("#sideview").innerHTML=s.join("");
+}
+function renderChecks(){
+  const z=G.zug,w=G.ww,g=gesamt(),L=[];
+  L.push(w.zgm<=z.anhaengelast?["ok","OK",`<b>Anhängelast:</b> Wohnwagen ${fmtKg(w.zgm)} ≤ ${fmtKg(z.anhaengelast)} erlaubt.`]
+                              :["bad","Zu schwer",`<b>Anhängelast:</b> Wohnwagen ${fmtKg(w.zgm)} über der erlaubten Anhängelast von ${fmtKg(z.anhaengelast)}.`]);
+  let need = g.zgm<=3500?"B":g.zgm<=4250?"B96":"BE";
+  if(w.zgm>3500) need="C1E";
+  const rank={B:0,B96:1,BE:2,C1E:3};
+  L.push(rank[G.fs]>=rank[need]?["ok","OK",`<b>Führerschein:</b> Summe der zul. Gesamtmassen ${fmtKg(g.zgm)} → mindestens Klasse ${need}. Du hast ${G.fs}.`]
+                              :["bad","Fehlt",`<b>Führerschein:</b> Summe der zul. Gesamtmassen ${fmtKg(g.zgm)} → Klasse ${need} nötig, eingetragen ist ${G.fs}.`]);
+  const f11=1.1*z.leer;
+  if(G.tempo100){
+    L.push(w.zgm<=f11&&w.zgm<=z.anhaengelast&&z.zgm<=3500?["ok","100",`<b>Tempo 100 (DE):</b> ${fmtKg(w.zgm)} ≤ 1,1 × Leermasse (${fmtKg(Math.round(f11))}). Plakette und Eintrag nötig.`]
+      :["warn","Prüfen",`<b>Tempo 100 (DE):</b> Wohnwagen schwerer als 1,1 × Leermasse (${fmtKg(Math.round(f11))}). Tempo 100 ist so nicht zulässig.`]);
+  } else {
+    L.push(["info","Info",`<b>Tempo 100 (DE):</b> möglich bis Wohnwagen ${fmtKg(Math.round(Math.min(f11,z.anhaengelast)))} (1,1 × Leermasse), mit Gutachten und Plakette. Gerechnet wird mit 80.`]);
+  }
+  if(w.breite>z.breite) L.push(["warn","Spiegel",`<b>Breite:</b> Wohnwagen ${fmtM(w.breite)} breiter als das Zugfahrzeug (${fmtM(z.breite)}). Caravanspiegel einplanen.`]);
+  L.push(g.zgm>3500?["info","&gt; 3,5 t",`<b>Über 3,5 t gesamt:</b> In Österreich gelten dann 80 auf der Autobahn und 70 auf Landstraßen.`]
+                   :["ok","≤ 3,5 t",`<b>Gesamtmasse ≤ 3,5 t:</b> In Österreich 100 auf der Autobahn.`]);
+  $("#checks").innerHTML=L.map(([c,t,x])=>`<li><span class="pill ${c}">${t}</span><span>${x}</span></li>`).join("");
+}
+
+/* ---------- Wegpunkte ---------- */
+const ICON_PICK=`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>`;
+const ICON_LOC=`<svg width="18" height="18" viewBox="0 0 24 24"><path d="M3 11l18-8-8 18-2-8z" fill="currentColor"/></svg>`;
+function getPos(opts){return new Promise((res,rej)=>{if(!navigator.geolocation)return rej({code:0});navigator.geolocation.getCurrentPosition(res,rej,Object.assign({enableHighAccuracy:true,timeout:20000,maximumAge:5000},opts))})}
+function geoErr(e){return e&&e.code===1?"Standortzugriff wurde abgelehnt. Erlaube ihn in den Browser-Einstellungen für diese Seite.":e&&e.code===3?"Kein GPS-Signal innerhalb von 20 Sekunden. Unter freiem Himmel erneut versuchen.":e&&e.code===0?"Dieser Browser liefert keinen Standort.":"Standort nicht verfügbar. GPS bzw. Ortungsdienste einschalten."}
+function renderWps(){
+  const box=$("#wps"); box.innerHTML="";
+  WPS.forEach((w,i)=>{
+    const kind=i===0?"start":i===WPS.length-1?"ziel":"via";
+    const ph=kind==="start"?"Start":kind==="ziel"?"Ziel":"Zwischenziel";
+    const inp=el("input",{class:"inp",id:"wp"+i,placeholder:ph+" suchen …",autocomplete:"off","aria-label":ph});
+    inp.value=w?w.label:"";
+    const sugg=el("ul",{class:"sugg",hidden:""});
+    const btns=el("div",{class:"btns"});
+    if(kind==="start"){
+      const loc=el("button",{class:"iconbtn",title:"Mein Standort","aria-label":"Mein Standort als Start"});loc.innerHTML=ICON_LOC;
+      loc.onclick=async()=>{setStatus("Standort wird bestimmt …");try{const p=await getPos();WPS[0]={label:"Mein Standort",lat:p.coords.latitude,lon:p.coords.longitude};setStatus("");renderWps();updateMarkers();markRouteStale();map?.flyTo({center:[p.coords.longitude,p.coords.latitude],zoom:11})}catch(e){setStatus(geoErr(e),true)}};
+      btns.append(loc);
+    }
+    const pick=el("button",{class:"iconbtn"+(pickIdx===i?" active":""),title:"Auf der Karte wählen","aria-label":ph+" auf der Karte wählen"});pick.innerHTML=ICON_PICK;
+    pick.onclick=()=>{pickIdx=pickIdx===i?null:i;$("#map").classList.toggle("picking",pickIdx!==null);$("#pickhint").hidden=pickIdx===null;renderWps();if(pickIdx!==null&&isMobile())collapseSheet(true)};
+    btns.append(pick);
+    const row=el("div",{class:"wp"},el("span",{class:"dot "+kind}),inp,btns,sugg);
+    if(kind==="via"){
+      const rm=el("button",{class:"linkbtn",style:"position:absolute;right:46px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:18px;padding:0 6px","aria-label":"Zwischenziel entfernen"},"×");
+      rm.onclick=()=>{WPS.splice(i,1);renderWps();updateMarkers();markRouteStale()};
+      row.append(rm);
+    }
+    box.append(row);
+    attachSuggest(inp,sugg,i);
+  });
+}
+function attachSuggest(inp,list,i){
+  let t=null,items=[],sel=-1,ctl=null;
+  const close=()=>{list.hidden=true;sel=-1};
+  inp.addEventListener("input",()=>{
+    clearTimeout(t); const q=inp.value.trim(); if(q.length<3){close();return}
+    t=setTimeout(async()=>{
+      try{
+        ctl?.abort(); ctl=new AbortController();
+        const c=map?map.getCenter():{lat:46,lng:12};
+        const r=await fetch(`${PHOTON}?q=${encodeURIComponent(q)}&lang=de&limit=6&lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}`,{signal:ctl.signal});
+        const j=await r.json();
+        items=j.features.map(f=>{const p=f.properties;const name=p.name||[p.street,p.housenumber].filter(Boolean).join(" ");const sub=[p.street&&p.name?[p.street,p.housenumber].filter(Boolean).join(" "):null,[p.postcode,p.city||p.county].filter(Boolean).join(" "),p.country].filter(Boolean).join(", ");return{label:[name,p.city&&p.city!==name?p.city:null,p.country].filter(Boolean).join(", "),name,sub,lon:f.geometry.coordinates[0],lat:f.geometry.coordinates[1]}});
+        list.innerHTML="";
+        items.forEach((it,k)=>{const li=el("li",{},it.name||it.label);li.append(el("small",{},it.sub));li.onmousedown=e=>{e.preventDefault();choose(k)};list.append(li)});
+        list.hidden=!items.length;
+      }catch(e){if(e.name!=="AbortError"){list.innerHTML="<li>Suche gerade nicht erreichbar</li>";list.hidden=false}}
+    },350);
+  });
+  const choose=k=>{const it=items[k];if(!it)return;WPS[i]={label:it.label,lat:it.lat,lon:it.lon};inp.value=it.label;close();updateMarkers();markRouteStale();map?.flyTo({center:[it.lon,it.lat],zoom:Math.max(map.getZoom(),8)})};
+  inp.addEventListener("keydown",e=>{
+    if(list.hidden)return;
+    if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();sel=(sel+(e.key==="ArrowDown"?1:-1)+items.length)%items.length;[...list.children].forEach((li,k)=>li.classList.toggle("on",k===sel))}
+    else if(e.key==="Enter"){e.preventDefault();choose(sel<0?0:sel)}
+    else if(e.key==="Escape")close();
+  });
+  inp.addEventListener("blur",()=>setTimeout(close,150));
+}
+function renderPresets(){
+  const box=$("#presets");
+  PRESETS.forEach(p=>{const b=el("button",{class:"chip"},p.n);b.onclick=()=>{WPS[WPS.length-1]={label:p.n,lat:p.lat,lon:p.lon};renderWps();updateMarkers();calcRoute()};box.append(b)});
+}
+
+/* ---------- Karte ---------- */
+let map=null, markers=[], popup=null;
+const isMobile=()=>matchMedia("(max-width:760px)").matches;
+const EMPTY={type:"FeatureCollection",features:[]};
+function iconImage(kind){
+  const s=48,c=document.createElement("canvas");c.width=c.height=s;const x=c.getContext("2d");
+  x.lineJoin="round";
+  if(kind==="camp"){x.fillStyle="#2f7d3a";x.beginPath();x.arc(24,24,21,0,7);x.fill();x.strokeStyle="#fff";x.lineWidth=3;x.stroke();
+    x.fillStyle="#fff";x.beginPath();x.moveTo(24,11);x.lineTo(37,34);x.lineTo(11,34);x.closePath();x.fill();x.fillStyle="#2f7d3a";x.beginPath();x.moveTo(24,22);x.lineTo(29,34);x.lineTo(19,34);x.closePath();x.fill();}
+  else {x.fillStyle="#1b4d9b";x.beginPath();x.moveTo(12,4);x.lineTo(36,4);x.quadraticCurveTo(44,4,44,12);x.lineTo(44,36);x.quadraticCurveTo(44,44,36,44);x.lineTo(12,44);x.quadraticCurveTo(4,44,4,36);x.lineTo(4,12);x.quadraticCurveTo(4,4,12,4);x.fill();x.strokeStyle="#fff";x.lineWidth=3;x.stroke();
+    if(kind==="rest"){x.fillStyle="#fff";x.font="bold 28px Arial";x.textAlign="center";x.textBaseline="middle";x.fillText("P",24,26)}
+    else{x.fillStyle="#fff";x.fillRect(14,13,13,24);x.fillStyle="#1b4d9b";x.fillRect(17,16,7,6);x.strokeStyle="#fff";x.lineWidth=2.5;x.beginPath();x.moveTo(27,18);x.lineTo(33,22);x.lineTo(33,33);x.stroke();x.fillStyle="#fff";x.fillRect(11,36,19,3)}}
+  return {width:s,height:s,data:new Uint8Array(x.getImageData(0,0,s,s).data.buffer)};
+}
+function initMap(){
+  map=new maplibregl.Map({container:"map",style:STYLE,center:[12.4,46.6],zoom:5.4,attributionControl:{compact:true},maxPitch:70});
+  map.addControl(new maplibregl.NavigationControl({visualizePitch:true}),"top-right");
+  map.on("load",()=>{
+    for(const k of ["camp","rest","services"]) map.addImage("i-"+k,iconImage(k),{pixelRatio:2});
+    for(const id of ["pkw","route","done","steep","mans","pois","gespann","gpos"]) map.addSource(id,{type:"geojson",data:EMPTY});
+    map.addLayer({id:"pkw",type:"line",source:"pkw",layout:{"line-join":"round","line-cap":"round"},paint:{"line-color":"#6b7785","line-width":["interpolate",["linear"],["zoom"],5,2.5,14,6],"line-dasharray":[1.2,1.4],"line-opacity":.85}});
+    map.addLayer({id:"route-case",type:"line",source:"route",layout:{"line-join":"round","line-cap":"round"},paint:{"line-color":"#ffffff","line-width":["interpolate",["linear"],["zoom"],5,6,14,13,18,16,21,40]}});
+    map.addLayer({id:"route",type:"line",source:"route",layout:{"line-join":"round","line-cap":"round"},paint:{"line-color":"#1d5fd1","line-width":["interpolate",["linear"],["zoom"],5,3.5,14,8,18,10,21,26],"line-opacity":["interpolate",["linear"],["zoom"],16,1,19,.75]}});
+    map.addLayer({id:"steep",type:"line",source:"steep",layout:{"line-join":"round","line-cap":"round"},paint:{"line-color":["get","c"],"line-width":["interpolate",["linear"],["zoom"],5,3.5,14,8,18,10,21,26]}});
+    map.addLayer({id:"done",type:"line",source:"done",layout:{"line-join":"round","line-cap":"round"},paint:{"line-color":"#8ea3bd","line-width":["interpolate",["linear"],["zoom"],5,3.5,14,8,18,10,21,26]}});
+    map.addLayer({id:"mans",type:"circle",source:"mans",minzoom:11,paint:{"circle-radius":4,"circle-color":"#ffffff","circle-stroke-color":"#1b4d9b","circle-stroke-width":2}});
+    map.addLayer({id:"pois",type:"symbol",source:"pois",layout:{"icon-image":["concat","i-",["get","kind"]],"icon-size":["interpolate",["linear"],["zoom"],5,0.55,10,0.8,15,1],"icon-allow-overlap":["step",["zoom"],false,9,true],"symbol-sort-key":["get","rank"],
+      "text-field":["step",["zoom"],"",10,["get","name"]],"text-font":["Noto Sans Regular"],"text-size":12,"text-offset":[0,1.3],"text-anchor":"top","text-optional":true,"text-max-width":9},
+      paint:{"text-color":"#132030","text-halo-color":"#ffffff","text-halo-width":1.4}});
+    map.addLayer({id:"gespann",type:"fill-extrusion",source:"gespann",paint:{"fill-extrusion-color":["get","c"],"fill-extrusion-height":["get","t"],"fill-extrusion-base":["get","b"],"fill-extrusion-opacity":1}});
+    map.addLayer({id:"gpos",type:"circle",source:"gpos",paint:{"circle-radius":["interpolate",["linear"],["zoom"],5,6,15,9],"circle-color":"#f0ad1c","circle-stroke-color":"#132030","circle-stroke-width":2.5,"circle-opacity":["interpolate",["linear"],["zoom"],15.5,1,16.5,0],"circle-stroke-opacity":["interpolate",["linear"],["zoom"],15.5,1,16.5,0]}});
+    map.on("click","pois",e=>{const f=e.features[0];if(f)openPoi(+f.properties.id)});
+    map.on("mouseenter","pois",()=>map.getCanvas().style.cursor="pointer");
+    map.on("mouseleave","pois",()=>map.getCanvas().style.cursor="");
+    updateMarkers();
+    calcRoute();
+  });
+  map.on("click",e=>{
+    if(pickIdx===null)return;
+    const i=pickIdx; pickIdx=null; $("#map").classList.remove("picking"); $("#pickhint").hidden=true;
+    WPS[i]={label:`Kartenpunkt ${e.lngLat.lat.toFixed(4)}, ${e.lngLat.lng.toFixed(4)}`,lat:e.lngLat.lat,lon:e.lngLat.lng};
+    renderWps(); updateMarkers(); markRouteStale(); if(isMobile())collapseSheet(false);
+  });
+  map.on("dragstart",()=>{ if(SIM.on && SIM.view!=="free") SIM.userHold=performance.now(); });
+}
+function updateMarkers(){
+  if(!map)return;
+  markers.forEach(m=>m.remove()); markers=[];
+  WPS.forEach((w,i)=>{if(!w)return;const kind=i===0?"start":i===WPS.length-1?"ziel":"via";
+    markers.push(new maplibregl.Marker({element:el("div",{class:"mk "+kind,title:w.label})}).setLngLat([w.lon,w.lat]).addTo(map))});
+}
+
+/* ---------- Routing ---------- */
+function markRouteStale(){ if(R && !SIM.on){ setStatus("Eingaben geändert. Route neu berechnen, damit sie gilt."); } }
+function setStatus(t,err){const s=$("#routeStatus");s.hidden=!t;s.textContent=t||"";s.classList.toggle("err",!!err)}
+async function valhalla(costing,opts,locs){
+  const body={locations:locs.map(w=>({lat:w.lat,lon:w.lon,type:"break"})),costing,costing_options:{[costing]:opts},language:"de-DE",units:"kilometers",directions_type:"instructions"};
+  const r=await fetch(VALHALLA+"/route",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const j=await r.json();
+  if(!j.trip) throw new Error(j.error||"Keine Route gefunden");
+  return j.trip;
+}
+async function calcRoute(opt={}){
+  if(WPS.some(w=>!w)){setStatus("Bitte Start und Ziel wählen.",true);return false}
+  if(!opt.keepNav) stopDrive();
+  const g=gesamt();
+  const common={use_tolls:$("#optToll").checked?0:0.5,use_ferry:$("#optFerry").checked?0.5:0,use_highways:$("#optHwy").checked?1:0.4};
+  const truckOpts=Object.assign({height:g.hoehe,width:g.breite,length:g.laenge,weight:+(g.zgm/1000).toFixed(2),axle_load:+(Math.max(G.zug.zgm*0.55,G.ww.zgm*0.95)/1000).toFixed(2),hazmat:false,hgv_no_access_penalty:30,low_class_penalty:10},common);
+  const autoOpts=Object.assign({height:G.zug.hoehe,width:G.zug.breite},common);
+  $("#calc").disabled=true; if(!opt.keepNav){setStatus("Route wird berechnet …"); $("#result").hidden=true;}
+  const locs=WPS.slice();
+  try{
+    const [tg,ta]=await Promise.allSettled([valhalla("truck",truckOpts,locs),opt.keepNav?Promise.reject(new Error("skip")):valhalla("auto",autoOpts,locs)]);
+    if(tg.status!=="fulfilled"){
+      const msg=String(tg.reason?.message||"");
+      throw new Error(/No path|442/.test(msg)?"Für dieses Gespann wurde keine erlaubte Route gefunden. Vermutlich blockiert eine Höhen-, Breiten- oder Gewichtsgrenze den einzigen Weg. Prüfe die Maße oder setze ein Zwischenziel.":msg==="Failed to fetch"?msg:"Routenberechnung fehlgeschlagen: "+msg);
+    }
+    R=buildModel(tg.value);
+    R.pkw=ta.status==="fulfilled"?{len:ta.value.summary.length,time:ta.value.summary.time,shape:joinShape(ta.value)}:null;
+    drawRoute(!opt.keepNav); renderResult(); setStatus("");
+    if(isMobile()&&!opt.keepNav)collapseSheet(false);
+    enrich(R);
+    return true;
+  }catch(e){ setStatus(e.message==="Failed to fetch"?"Routing-Server nicht erreichbar. Internetverbindung prüfen und erneut versuchen.":e.message,true); return false }
+  finally{$("#calc").disabled=false}
+}
+function joinShape(trip){const out=[];trip.legs.forEach((l,k)=>{const s=decode6(l.shape);out.push(...(k?s.slice(1):s))});return out}
+
+function buildModel(trip){
+  const pts=[],mans=[],legEnds=[];
+  trip.legs.forEach((leg,k)=>{
+    const s=decode6(leg.shape), off=pts.length?pts.length-1:0;
+    pts.push(...(k?s.slice(1):s));
+    leg.maneuvers.forEach(m=>{ m=Object.assign({},m); if(k<trip.legs.length-1 && m.type>=4&&m.type<=6){ m.instruction="Zwischenziel erreicht."; m.verbal_pre_transition_instruction="Zwischenziel erreicht."; m.type=36; } mans.push(Object.assign(m,{b:m.begin_shape_index+off,e:m.end_shape_index+off})) });
+    legEnds.push(pts.length-1);
+  });
+  const n=pts.length, cum=new Float64Array(n), v=new Float32Array(n), cc=new Array(n), cls=new Array(n), cumT=new Float64Array(n), mi=new Int32Array(n);
+  for(let i=1;i<n;i++)cum[i]=cum[i-1]+hav(pts[i-1],pts[i]);
+  let last=null,lastD=-1e9;
+  for(let i=0;i<n-1;i++){ if(cum[i]-lastD>1200||last===null){ const mid=[(pts[i][0]+pts[i+1][0])/2,(pts[i][1]+pts[i+1][1])/2]; last=countryAt(mid[0],mid[1])||last||"DE"; lastD=cum[i]; } cc[i]=last; }
+  cc[n-1]=cc[n-2]||"DE";
+  mans.forEach((m,k)=>{
+    const vm=m.time>0?(m.length*1000/m.time):12;
+    const names=(m.street_names||[]).join(" ");
+    const kmh=vm*3.6;
+    const c=(HWY_RE.test(names)&&kmh>50)||kmh>=72?"ab":kmh<38?"ort":"land";
+    for(let i=m.b;i<Math.max(m.e,m.b+1)&&i<n;i++){ mi[i]=k; cls[i]=c; const cap=caps(cc[i])[c]/3.6; v[i]=Math.max(1.5,Math.min(vm,cap)); }
+  });
+  for(let i=1;i<n;i++){ if(!v[i-1]){v[i-1]=10;cls[i-1]=cls[i-1]||"land"} cumT[i]=cumT[i-1]+(cum[i]-cum[i-1])/v[i-1]; }
+  const per={},order=[];
+  for(let i=0;i<n-1;i++){const c=cc[i];if(!per[c]){per[c]=0;order.push(c)}per[c]+=cum[i+1]-cum[i]}
+  const samp=[0];for(let i=1;i<n;i++)if(cum[i]-cum[samp[samp.length-1]]>=200)samp.push(i);if(samp[samp.length-1]!==n-1)samp.push(n-1);
+  return {trip,pts,mans,n,cum,v,cc,cls,cumT,mi,samp,legEnds:legEnds.map(i=>cum[i]),len:cum[n-1],time:cumT[n-1],per,order,summary:trip.summary,stops:null,profile:null};
+}
+/* Punkt auf Route projizieren: Position entlang der Route (s) und seitlicher Abstand */
+function project(RR,lng,lat,i0,i1){
+  const kx=111320*Math.cos(lat*D2R),ky=110540;let bd=1e18,bi=0,bt=0;
+  i0=Math.max(0,i0|0);i1=Math.min(RR.n-1,i1|0);
+  for(let i=i0;i<i1;i++){const a=RR.pts[i],b=RR.pts[i+1];const ax=(a[0]-lng)*kx,ay=(a[1]-lat)*ky,dx=(b[0]-a[0])*kx,dy=(b[1]-a[1])*ky,L=dx*dx+dy*dy;let t=L?-(ax*dx+ay*dy)/L:0;t=t<0?0:t>1?1:t;const px=ax+dx*t,py=ay+dy*t,d=px*px+py*py;if(d<bd){bd=d;bi=i;bt=t}}
+  return {s:RR.cum[bi]+(RR.cum[Math.min(bi+1,RR.n-1)]-RR.cum[bi])*bt,lat:Math.sqrt(bd),i:bi};
+}
+function projectFast(RR,lng,lat){
+  const kx=Math.cos(lat*D2R);let bd=1e18,bj=0;
+  for(let j=0;j<RR.samp.length;j++){const p=RR.pts[RR.samp[j]];const dx=(p[0]-lng)*kx,dy=p[1]-lat,d=dx*dx+dy*dy;if(d<bd){bd=d;bj=j}}
+  return project(RR,lng,lat,RR.samp[Math.max(0,bj-1)],RR.samp[Math.min(RR.samp.length-1,bj+1)]);
+}
+
+function drawRoute(fit=true){
+  const line=c=>({type:"FeatureCollection",features:[{type:"Feature",geometry:{type:"LineString",coordinates:c},properties:{}}]});
+  map.getSource("route").setData(line(R.pts));
+  for(const id of ["done","steep","pois"])map.getSource(id).setData(EMPTY);
+  map.getSource("pkw").setData(R.pkw && Math.abs(R.pkw.len-R.len/1000)>1.5?line(R.pkw.shape):EMPTY);
+  map.getSource("mans").setData({type:"FeatureCollection",features:R.mans.map(m=>({type:"Feature",geometry:{type:"Point",coordinates:R.pts[m.b]},properties:{}}))});
+  if(fit)fitRoute();
+}
+function fitRoute(){
+  let x0=180,y0=90,x1=-180,y1=-90;for(const [x,y] of R.pts){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
+  const pad=isMobile()?{top:40,bottom:Math.round(innerHeight*0.4),left:30,right:30}:{top:60,bottom:60,left:60,right:60};
+  map.fitBounds([[x0,y0],[x1,y1]],{padding:pad,pitch:0,bearing:0,duration:800});
+}
+
+function renderResult(){
+  const box=$("#result"); box.hidden=false;
+  const dep=departDate(), arr=new Date(dep.getTime()+R.time*1000);
+  const g=gesamt(), s=R.summary;
+  let cmp="";
+  if(R.pkw){
+    const dk=R.len/1000-R.pkw.len;
+    cmp = dk>1.5
+      ? `<b>Die Gespann-Route ist ${dk.toFixed(1).replace(".",",")} km länger</b> als die Strecke für den Multivan allein (gestrichelt). Grund sind Höhen-, Breiten-, Längen- oder Gewichtsgrenzen auf der kürzeren Strecke.`
+      : Math.abs(dk)>1.5 ? `<b>Die Gespann-Route verläuft anders</b> als die Strecke für den Multivan allein (gestrichelt), ist aber nicht länger.`
+      : `<b>Gleiche Strecke wie ohne Wohnwagen.</b> Auf dieser Route ist laut OpenStreetMap keine Durchfahrtsgrenze für ${fmtM(g.hoehe)} Höhe und ${(g.zgm/1000).toFixed(1).replace(".",",")} t betroffen.`;
+    cmp += ` Fahrzeit ohne Wohnwagen: ${fmtDur(R.pkw.time)}.`;
+  }
+  const hints=[];
+  const has=c=>R.order.includes(c);
+  if(has("AT")) hints.push(`<b>Österreich:</b> Vignette für das Zugfahrzeug, der Wohnwagen braucht keine eigene. Brenner, Tauern- und Karawankentunnel kosten zusätzlich Streckenmaut.`);
+  if(has("SI")) hints.push(`<b>Slowenien:</b> E-Vignette. Fahrzeuge über 1,30 m Höhe an der Vorderachse (Multivan) brauchen Klasse 2B.`);
+  if(has("HR")) hints.push(`<b>Kroatien:</b> Autobahnmaut nach Kategorie II (Pkw mit Anhänger). Bei Bora sperrt die HAK Brücken und Abschnitte für Wohnwagen, vor der Fahrt die Verkehrslage prüfen.`);
+  if(has("IT")) hints.push(`<b>Italien:</b> Maut nach Klasse 3 (drei Achsen). Gespann-Limit 80 auf der Autobahn, 70 außerorts.`);
+  if(has("CH")) hints.push(`<b>Schweiz:</b> Vignette für Zugfahrzeug <i>und</i> Wohnwagen.`);
+  if(s.has_ferry) hints.push(`<b>Fähre auf der Route:</b> Gespann-Tarif nach Gesamtlänge (${fmtM(g.laenge)}) buchen.`);
+  if(s.has_time_restrictions) hints.push(`Auf der Route gibt es Straßen mit zeitlichen Beschränkungen.`);
+  hints.push(`Die Route meidet Straßen mit eingetragener Durchfahrtshöhe unter ${fmtM(g.hoehe)}, Breite unter ${fmtM(g.breite)}, Länge unter ${fmtM(g.laenge)} und Gewichtsgrenzen unter ${(g.zgm/1000).toFixed(1).replace(".",",")} t. Nicht eingetragene Schilder kennt sie nicht.`);
+
+  box.innerHTML=`
+    <div class="sum">
+      <div><div class="k">Strecke</div><div class="v">${fmtKm(R.len)}</div></div>
+      <div><div class="k">Fahrzeit Gespann</div><div class="v">${fmtDur(R.time)}</div></div>
+      <div><div class="k">Abfahrt</div><div class="v">${fmtClock(dep)} <small>${dep.toLocaleDateString("de-DE",{weekday:"short"})}</small></div></div>
+      <div><div class="k">Ankunft ohne Pausen</div><div class="v">${fmtClock(arr)} <small>${arr.toLocaleDateString("de-DE",{weekday:"short"})}</small></div></div>
+    </div>
+    <div class="row">
+      <button class="btn go" id="navStart"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M3 11l18-8-8 18-2-8z" fill="currentColor"/></svg>Navigation starten</button>
+      <button class="btn ghost" id="simStart"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>Simulation</button>
+    </div>
+    ${cmp?`<p class="cmp">${cmp}</p>`:""}
+    <div class="group" id="gradeBox"><h2>Höhenprofil und Steigungen</h2><p class="note">Höhendaten werden geladen …</p></div>
+    <div class="group"><h2>Länder und Gespann-Tempo</h2><div class="countries">${R.order.map(c=>{const k=caps(c);return `<span class="cc" title="${CC_NAME[c]||c}"><span class="oval">${c}</span>${fmtKm(R.per[c])} · ${k.ab}/${k.land}</span>`}).join("")}</div>
+      <p class="note" style="margin-top:6px">Zahlen: Autobahn/Landstraße in km/h für Pkw mit Wohnwagen. Richtwerte, vor der Reise beim ADAC prüfen.</p></div>
+    <div class="group"><h2>Hinweise für die Strecke</h2><ul class="hints">${hints.map(h=>`<li>${h}</li>`).join("")}</ul></div>
+    <div class="group"><h2>Fahranweisungen (${R.mans.length})</h2><ul class="mlist" id="mlist"></ul></div>`;
+  const ul=$("#mlist");
+  R.mans.forEach((m)=>{
+    const li=el("li",{});li.innerHTML=`${arrowSvg(m.type,22,"currentColor")}<span>${esc(m.instruction)}</span><span class="d">${m.length?fmtKm(m.length*1000):""}</span>`;
+    li.onclick=()=>{ if(SIM.on&&SIM.mode==="sim"){seekTo(R.cum[m.b]);} else flyToS(R.cum[m.b]); if(isMobile())collapseSheet(true); };
+    ul.append(li);
+  });
+  $("#simStart").onclick=()=>beginDrive("sim",0);
+  $("#navStart").onclick=startNav;
+  if(R.profile)renderGrades();
+}
+function flyToS(s){ if(SIM.on)SIM.userHold=performance.now()+6000; map.flyTo({center:posAt(s),zoom:15.5,pitch:40,duration:900}); }
+function departDate(){const v=$("#depart").value;const d=v?new Date(v):new Date();return isNaN(d)?new Date():d}
+
+/* ---------- Höhenprofil und Steigungen ---------- */
+function enrich(RR){
+  loadGrades(RR).catch(()=>{ if(RR===R){const b=$("#gradeBox");if(b)b.innerHTML=`<h2>Höhenprofil und Steigungen</h2><p class="note">Höhendaten gerade nicht verfügbar.</p>`} });
+  loadStops(RR).catch(()=>{ if(RR===R)$("#stopsBody").innerHTML=`<p class="note">Camping- und Rastplätze konnten gerade nicht geladen werden.</p>` });
+}
+async function loadGrades(RR){
+  const n=RR.n, CH=8000, pts=[];
+  for(let a=0;a<n-1;a+=CH){
+    const b=Math.min(n,a+CH+1);
+    const body={encoded_polyline:encode6(RR.pts.slice(a,b)),costing:"auto",shape_match:"edge_walk",filters:{attributes:["edge.length","edge.tunnel","edge.mean_elevation","edge.begin_shape_index","edge.end_shape_index","edge.names"],action:"include"}};
+    const j=await (await fetch(VALHALLA+"/trace_attributes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})).json();
+    if(!j.edges) continue;
+    for(const e of j.edges){
+      if(e.mean_elevation==null||e.mean_elevation<-400||e.mean_elevation>5000||e.tunnel)continue;
+      const i0=a+e.begin_shape_index,i1=Math.min(n-1,a+e.end_shape_index);
+      pts.push({s:(RR.cum[i0]+RR.cum[i1])/2,e:e.mean_elevation,name:(e.names||[])[0]||""});
+    }
+  }
+  if(RR!==R)return;
+  if(pts.length<5)throw new Error("keine Höhen");
+  pts.sort((x,y)=>x.s-y.s);
+  const step=100,N=Math.ceil(RR.len/step)+1,E=new Float32Array(N),NM=new Array(N);
+  let k=0;
+  for(let i=0;i<N;i++){const s=i*step;while(k<pts.length-2&&pts[k+1].s<s)k++;const A=pts[k],B=pts[k+1];let e;if(s<=A.s)e=A.e;else if(s>=B.s)e=B.e;else e=A.e+(B.e-A.e)*(s-A.s)/(B.s-A.s);E[i]=e;NM[i]=(Math.abs(s-A.s)<Math.abs(s-B.s)?A:B).name}
+  const Sm=new Float32Array(N);for(let i=0;i<N;i++){let t=0,c=0;for(let j=Math.max(0,i-2);j<=Math.min(N-1,i+2);j++){t+=E[j];c++}Sm[i]=t/c}
+  const W=10,gr=new Float32Array(N);for(let i=0;i<N;i++){const j=Math.min(N-1,i+W);gr[i]=j>i?(Sm[j]-Sm[i])/((j-i)*step)*100:0}
+  // Abschnitte mit anhaltender Steigung oder anhaltendem Gefälle ab 6 %
+  const secs=[];let i=0;
+  while(i<N){const sg=Math.sign(gr[i]);if(Math.abs(gr[i])<6){i++;continue}let j=i,gap=0;
+    while(j+1<N){const g2=gr[j+1];if(Math.abs(g2)>=6&&Math.sign(g2)===sg){j++;gap=0}else if(Math.abs(g2)>=3.5&&Math.sign(g2)===sg&&gap<5){j++;gap++}else break}
+    j-=gap;const i1=Math.min(N-1,j+W),len=(i1-i)*step,avg=len?(Sm[i1]-Sm[i])/len*100:0;let mx=0;for(let q=i;q<=j;q++)mx=Math.max(mx,Math.abs(gr[q]));
+    if(len>=1000&&Math.abs(avg)>=5&&mx<=16)secs.push({s0:i*step,s1:i1*step,len,avg,max:mx,dir:sg,sev:(Math.abs(avg)>=8||(Math.abs(avg)>=6&&len>=5000))?2:1,name:NM[Math.round((i+i1)/2)]||""});
+    i=Math.max(j+1,i1-W+1);}
+  let up=0,down=0;for(let q=1;q<N;q++){const d=Sm[q]-Sm[q-1];if(d>0)up+=d;else down-=d}
+  let mxI=0;for(let q=1;q<N;q++)if(Sm[q]>Sm[mxI])mxI=q;
+  RR.profile={step,E:Sm,N,secs,up,down,max:{s:mxI*step,e:Sm[mxI],name:NM[mxI]}};
+  renderGrades();
+  map.getSource("steep").setData({type:"FeatureCollection",features:secs.map(x=>({type:"Feature",geometry:{type:"LineString",coordinates:sliceRoute(x.s0,Math.min(x.s1,RR.len))},properties:{c:x.sev===2?"#d0261d":"#f0ad1c"}}))});
+}
+function sliceRoute(s0,s1){const a=idxAt(s0),b=idxAt(s1);return [posAt(s0),...R.pts.slice(a+1,b+1),posAt(s1)]}
+function renderGrades(){
+  const P=R.profile,box=$("#gradeBox");if(!P||!box)return;
+  const W=360,H=130,l=36,r=8,t=12,b=22,w=W-l-r,h=H-t-b;
+  let mn=Infinity,mx=-Infinity;for(let i=0;i<P.N;i++){mn=Math.min(mn,P.E[i]);mx=Math.max(mx,P.E[i])}
+  const lo=Math.max(0,Math.floor(mn/100)*100),hi=Math.max(lo+200,Math.ceil(mx/100)*100);
+  const X=s=>l+Math.min(s,R.len)/R.len*w,Y=e=>t+h-(e-lo)/(hi-lo)*h;
+  const stepI=Math.max(1,Math.floor(P.N/400));let d=`M${X(0)} ${Y(lo)}`;for(let i=0;i<P.N;i+=stepI)d+=` L${X(i*P.step).toFixed(1)} ${Y(P.E[i]).toFixed(1)}`;d+=` L${X(R.len)} ${Y(P.E[P.N-1])} L${X(R.len)} ${Y(lo)} Z`;
+  const segs=P.secs.map(x=>{let p=`M${X(x.s0).toFixed(1)} ${Y(lo)}`;for(let i=Math.floor(x.s0/P.step);i<=Math.ceil(x.s1/P.step)&&i<P.N;i++)p+=` L${X(i*P.step).toFixed(1)} ${Y(P.E[i]).toFixed(1)}`;p+=` L${X(x.s1).toFixed(1)} ${Y(lo)} Z`;return `<path d="${p}" fill="${x.sev===2?"#d0261d":"#f0ad1c"}" opacity=".9"/>`}).join("");
+  const kmT=[0,R.len/2,R.len].map((s,k)=>`<text class="ax" x="${X(s)}" y="${H-6}" text-anchor="${k===0?"start":k===2?"end":"middle"}">${Math.round(s/1000)} km</text>`).join("");
+  const yT=[lo,hi].map(e=>`<line class="grid" x1="${l}" x2="${W-r}" y1="${Y(e)}" y2="${Y(e)}"/><text class="ax" x="${l-5}" y="${Y(e)+3.5}" text-anchor="end">${e.toLocaleString("de-DE")}</text>`).join("");
+  const mxX=X(P.max.s),mxY=Y(P.max.e);
+  const ups=P.secs.filter(x=>x.dir>0).length,dns=P.secs.length-ups;
+  box.innerHTML=`<h2>Höhenprofil und Steigungen</h2>
+    <svg id="profile" viewBox="0 0 ${W} ${H}" role="img" aria-label="Höhenprofil der Route">${yT}<path class="area" d="${d}"/>${segs}
+      <circle cx="${mxX}" cy="${mxY}" r="3.5" fill="var(--ink)"/><text class="ax" x="${Math.min(Math.max(mxX,l+40),W-r-40)}" y="${Math.max(mxY-7,t+2)}" text-anchor="middle" style="fill:var(--ink);font-weight:600">${Math.round(P.max.e).toLocaleString("de-DE")} m</text>${kmT}</svg>
+    <p class="note">Höchster Punkt ${Math.round(P.max.e).toLocaleString("de-DE")} m${P.max.name?` (${esc(P.max.name)})`:""} · ${Math.round(P.up).toLocaleString("de-DE")} m bergauf · ${Math.round(P.down).toLocaleString("de-DE")} m bergab.
+      <span style="color:#f0ad1c;font-weight:700">■</span> Steigung oder Gefälle um 6 % · <span style="color:#d0261d;font-weight:700">■</span> ab 8 % oder länger als 5 km</p>
+    ${P.secs.length?`<ul class="steeps">${P.secs.map((x,k)=>`<li data-k="${k}"><span class="grade s${x.sev}">${x.dir>0?"↗":"↘"} ${pct(x.avg)}</span><span>${x.dir>0?"Steigung":"Gefälle"} auf ${fmtKm(x.len)}${x.name?` · ${esc(x.name)}`:""}</span><span class="d">km ${Math.round(x.s0/1000)}</span></li>`).join("")}</ul>
+      <p class="note" style="margin-top:6px">${dns?"Bergab: kleinen Gang einlegen und mit der Motorbremse fahren, nicht dauerhaft bremsen. ":""}${ups?"Bergauf: früh zurückschalten und Motortemperatur beobachten.":""}</p>`
+      :`<p class="note">Keine längeren Steigungen oder Gefälle ab 6 % auf dieser Route.</p>`}`;
+  box.querySelectorAll(".steeps li").forEach(li=>li.onclick=()=>{const x=P.secs[+li.dataset.k];if(SIM.on&&SIM.mode==="sim")seekTo(Math.max(0,x.s0-800));else flyToS(x.s0);if(isMobile())collapseSheet(true)});
+  $("#profile").onclick=e=>{const rc=e.currentTarget.getBoundingClientRect();const s=Math.max(0,Math.min(1,((e.clientX-rc.left)/rc.width*W-l)/w))*R.len;if(SIM.on&&SIM.mode==="sim")seekTo(s);else flyToS(s)};
+}
+
+/* ---------- Camping- und Rastplätze ---------- */
+async function overpass(q){
+  for(const url of OVERPASS){
+    const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),25000);
+    try{const r=await fetch(url,{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"},signal:ctl.signal});
+      if(!r.ok)throw new Error(r.status);const j=await r.json();clearTimeout(to);if(j&&j.elements)return j.elements}
+    catch(e){clearTimeout(to)}
+  }
+  return null;
+}
+async function photonTag(q,tags,lat,lon,d,limit){
+  const tg=tags.map(t=>"&osm_tag="+encodeURIComponent(t)).join("");
+  const u=`${PHOTON}?q=${encodeURIComponent(q)}${tg}&lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&limit=${limit}&bbox=${(lon-d).toFixed(4)},${(lat-d).toFixed(4)},${(lon+d).toFixed(4)},${(lat+d).toFixed(4)}`;
+  try{const j=await (await fetch(u)).json();return j.features.map(f=>({id:"p"+f.properties.osm_type+f.properties.osm_id,lon:f.geometry.coordinates[0],lat:f.geometry.coordinates[1],tags:{name:f.properties.name,[f.properties.osm_key]:f.properties.osm_value,"addr:city":f.properties.city}}))}catch(e){return[]}
+}
+async function photonStops(RR){
+  const z=WPS[WPS.length-1],out=[],jobs=[];
+  for(const q of ["camping","kamp","campeggio","autocamp","campingplatz"]) jobs.push(()=>photonTag(q,["tourism:camp_site"],z.lat,z.lon,0.22,40));
+  for(let s=25000;s<RR.len-10000;s+=50000){const p=posAt(s,RR);jobs.push(()=>photonTag("camping",["tourism:camp_site"],p[1],p[0],0.05,10))}
+  const WORDS={DE:["rast","parkplatz"],AT:["rast","parkplatz"],CH:["rast"],IT:["area","autogrill"],SI:["počivališče","postajališče"],HR:["odmorište"],FR:["aire"],HU:["pihenő"]};
+  for(let s=0;s<RR.len;s+=30000){const p=posAt(s,RR);for(const q of WORDS[RR.cc[idxAt(s,RR)]]||["rast"])jobs.push(()=>photonTag(q,["highway:rest_area","highway:services"],p[1],p[0],0.16,12))}
+  for(let i=0;i<jobs.length&&RR===R;i+=3){const r=await Promise.all(jobs.slice(i,i+3).map(f=>f()));r.forEach(a=>out.push(...a));await new Promise(ok=>setTimeout(ok,120))}
+  return out;
+}
+async function loadStops(RR){
+  renderStops(RR,"loading");
+  const simp=simplify(RR.pts,80),parts=[];
+  for(let i=0;i<simp.length-1;i+=40){
+    const c=simp.slice(i,i+41);let x0=180,y0=90,x1=-180,y1=-90;for(const [x,y] of c){x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)}
+    const pad=0.05,bb=`${(y0-pad).toFixed(4)},${(x0-pad).toFixed(4)},${(y1+pad).toFixed(4)},${(x1+pad).toFixed(4)}`,ll=c.map(([x,y])=>`${y.toFixed(5)},${x.toFixed(5)}`).join(",");
+    parts.push(`nwr["highway"~"^(rest_area|services)$"](${bb})(around:150,${ll});`,`nwr["tourism"="camp_site"](${bb})(around:3000,${ll});`);
+  }
+  const z=WPS[WPS.length-1];
+  parts.push(`nwr["tourism"="camp_site"](around:20000,${z.lat.toFixed(5)},${z.lon.toFixed(5)});`);
+  let els=await overpass(`[out:json][timeout:60];(${parts.join("")});out center tags qt;`), src="OpenStreetMap über Overpass";
+  if(RR!==R)return;
+  if(!els){els=await photonStops(RR);src="OpenStreetMap über die Photon-Suche (nur Plätze mit Namen)";}
+  if(RR!==R)return;
+  const zz=[z.lon,z.lat],seen=new Set(),items=[];
+  for(const e of els){
+    const t=e.tags||{},lat=e.lat??e.center?.lat,lon=e.lon??e.center?.lon;if(lat==null)continue;
+    const key=e.type?e.type+e.id:e.id;if(seen.has(key))continue;seen.add(key);
+    const kind=t.tourism==="camp_site"?"camp":t.highway==="services"?"services":t.highway==="rest_area"?"rest":null;if(!kind)continue;
+    if(kind==="camp"&&(t.caravans==="no"||t.tents==="only"))continue;
+    const pr=projectFast(RR,lon,lat),dz=hav([lon,lat],zz);
+    const it={kind,lat,lon,tags:t,name:t.name||t.operator||(kind==="camp"?"Campingplatz":kind==="services"?"Raststätte":"Rastplatz"),s:pr.s,off:pr.lat,dz};
+    if(kind==="camp"){ if(dz<=20000)it.grp="ziel"; else if(pr.lat<=3500&&pr.s<RR.len-15000)it.grp="weg"; else continue; }
+    else { if(pr.lat>250)continue; it.grp="rast"; }
+    items.push(it);
+  }
+  // Rastplätze: doppelte Einträge (beide Fahrtrichtungen, Fläche und Punkt) zusammenfassen
+  const norm=s=>s.toLowerCase().replace(/\b(nord|süd|sud|ost|west|north|south|east|est|ovest|sever|jug|istok|zapad|links|rechts)\b/g,"").replace(/[^a-zäöüčćšžđ]/g,"");
+  const rast=items.filter(x=>x.grp==="rast").sort((a,b)=>a.s-b.s),keep=[];
+  for(const x of rast){const p=keep.find(k=>Math.abs(k.s-x.s)<(x.tags.name&&k.tags.name&&norm(k.name)===norm(x.name)?1500:400));if(p){if(x.kind==="services")p.kind="services";if(!p.tags.name&&x.tags.name){p.name=x.name;p.tags=x.tags}}else keep.push(x)}
+  // Campingplätze: Rezeption, Fläche und Eingang desselben Platzes nur einmal zeigen
+  const camps=[];
+  for(const x of items.filter(x=>x.grp!=="rast")){const p=camps.find(k=>hav([k.lon,k.lat],[x.lon,x.lat])<(norm(k.name).slice(-6)===norm(x.name).slice(-6)?1200:250));if(p){if(Object.keys(x.tags).length>Object.keys(p.tags).length){const keepName=p.tags.name&&!x.tags.name;Object.assign(p,{tags:x.tags,lat:x.lat,lon:x.lon});if(!keepName)p.name=x.name}}else camps.push(x)}
+  const S={src,ziel:camps.filter(x=>x.grp==="ziel").sort((a,b)=>a.dz-b.dz),weg:camps.filter(x=>x.grp==="weg").sort((a,b)=>a.s-b.s),rast:keep};
+  S.all=[...S.ziel,...S.weg,...S.rast];S.all.forEach((x,i)=>x.id=i);
+  RR.stops=S;
+  map.getSource("pois").setData({type:"FeatureCollection",features:S.all.map(x=>({type:"Feature",geometry:{type:"Point",coordinates:[x.lon,x.lat]},properties:{id:x.id,kind:x.kind,name:x.name,rank:x.kind==="camp"?1:2}}))});
+  renderStops(RR);
+}
+function stopSub(x){
+  const t=x.tags,bits=[];
+  if(x.grp==="ziel")bits.push(`${fmtKm(x.dz)} vom Ziel`);
+  else bits.push(`bei km ${Math.round(x.s/1000)}`+(x.grp==="weg"?` · ${fmtKm(x.off)} abseits`:""));
+  if(x.kind==="services")bits.push("Raststätte");else if(x.kind==="rest")bits.push("Rastplatz");
+  const st=parseInt(t.stars);if(st>0)bits.push("★".repeat(Math.min(5,st)));
+  if(t["addr:city"]&&x.kind==="camp")bits.push(esc(t["addr:city"]));
+  return bits.join(" · ");
+}
+function stopTags(x){const t=x.tags,o=[];if(t.caravans==="yes")o.push(`<span class="tag yes">Wohnwagen erlaubt</span>`);if(t.power_supply==="yes")o.push(`<span class="tag">Strom</span>`);if(t.toilets==="yes")o.push(`<span class="tag">WC</span>`);if(t.fuel==="yes")o.push(`<span class="tag">Tankstelle</span>`);return o.join("")}
+function renderStops(RR,state){
+  if(RR!==R)return;
+  const box=$("#stopsBody"),cnt=$("#stopsCnt");
+  if(state==="loading"){box.innerHTML=`<p class="note">Camping- und Rastplätze entlang der Route werden gesucht …</p>`;cnt.hidden=true;return}
+  const S=RR.stops;cnt.hidden=false;cnt.textContent=S.all.length;
+  const ico=k=>k==="camp"?`<span class="ico camp" aria-hidden="true"><svg width="16" height="14" viewBox="0 0 16 14"><path d="M8 0L16 14H0z" fill="#fff"/><path d="M8 7l3 7H5z" fill="#2f7d3a"/></svg></span>`:`<span class="ico ${k}" aria-hidden="true">${k==="rest"?"P":`<svg width="14" height="16" viewBox="0 0 14 16"><rect x="1" y="1" width="8" height="14" fill="#fff"/><rect x="3" y="3" width="4" height="4" fill="#1b4d9b"/><path d="M9 4l4 2v7" stroke="#fff" stroke-width="1.6" fill="none"/></svg>`}</span>`;
+  const list=(arr,btn)=>arr.length?`<ul class="slist">${arr.map(x=>`<li data-id="${x.id}">${ico(x.kind)}<div><div class="nm">${esc(x.name)}</div><div class="sub">${stopSub(x)}</div>${stopTags(x)?`<div style="margin-top:3px">${stopTags(x)}</div>`:""}</div>${btn?`<button class="btn ghost small" data-act="${btn}" data-id="${x.id}">${btn==="ziel"?"Als Ziel":"Stopp"}</button>`:""}</li>`).join("")}</ul>`:`<p class="note">Nichts gefunden.</p>`;
+  box.innerHTML=`<div style="display:flex;flex-direction:column;gap:18px">
+    <div class="group"><h2>Campingplätze am Ziel (${S.ziel.length})</h2>${list(S.ziel.slice(0,60),"ziel")}</div>
+    <div class="group"><h2>Unterwegs übernachten (${S.weg.length})</h2><p class="note" style="margin:-4px 0 8px">Campingplätze bis 3,5 km neben der Route. „Stopp“ fügt den Platz als Zwischenziel ein.</p>${list(S.weg,"via")}</div>
+    <div class="group"><h2>Rastplätze und Raststätten (${S.rast.length})</h2><p class="note" style="margin:-4px 0 8px">Fahrtrichtung prüfen: Manche Anlagen liegen auf der Gegenseite.</p>${list(S.rast,null)}</div>
+    <p class="note">Quelle: ${esc(S.src)}. Ob Wohnwagen erlaubt sind, ist nicht überall eingetragen. Vor der Anreise beim Platz nachfragen.</p></div>`;
+  box.querySelectorAll(".slist li").forEach(li=>li.onclick=e=>{const id=+li.dataset.id;const act=e.target.closest("[data-act]");if(act){e.stopPropagation();useStop(id,act.dataset.act);return}openPoi(id,true)});
+}
+function openPoi(id,fly){
+  const S=R?.stops;if(!S)return;const x=S.all[id];if(!x)return;
+  const t=x.tags,web=t.website||t["contact:website"]||t.url,tel=t.phone||t["contact:phone"];
+  const html=`<div class="pop"><b>${esc(x.name)}</b><div class="sub">${stopSub(x)}</div>${stopTags(x)}
+    ${t.opening_hours?`<div class="sub" style="margin-top:6px">Geöffnet: ${esc(t.opening_hours)}</div>`:""}
+    ${tel?`<div class="sub">Telefon: <span style="user-select:all">${esc(tel)}</span></div>`:""}
+    ${web&&/^https?:\/\//.test(web)?`<div class="sub"><a href="${esc(web)}" target="_blank" rel="noopener">Webseite öffnen</a></div>`:""}
+    ${x.kind==="camp"?`<div class="row"><button class="btn primary small" data-act="ziel">Als Ziel</button><button class="btn ghost small" data-act="via">Als Zwischenstopp</button></div>`:""}</div>`;
+  popup?.remove();
+  popup=new maplibregl.Popup({maxWidth:"300px",offset:14}).setLngLat([x.lon,x.lat]).setHTML(html).addTo(map);
+  popup.getElement().querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>{popup.remove();useStop(id,b.dataset.act)});
+  if(fly){if(SIM.on)SIM.userHold=performance.now()+8000;map.flyTo({center:[x.lon,x.lat],zoom:Math.max(map.getZoom(),13),duration:800});if(isMobile())collapseSheet(true)}
+}
+function useStop(id,act){
+  const x=R.stops.all[id];const w={label:x.name,lat:x.lat,lon:x.lon};
+  if(act==="ziel")WPS[WPS.length-1]=w;
+  else{const passed=R.legEnds.filter(e=>e<x.s).length;WPS.splice(Math.min(WPS.length-1,1+passed),0,w)}
+  renderWps();updateMarkers();showTab("route");calcRoute({keepNav:SIM.on&&SIM.mode==="gps"});
+}
+
+/* ---------- Pfeil-Symbole ---------- */
+function arrowSvg(type,size=64,color="#fff"){
+  const T=type, rot={9:45,10:90,11:135,14:-135,15:-90,16:-45,18:45,19:-45,20:45,21:-45,23:30,24:-30,37:30,38:-30}[T];
+  const wrap=b=>`<svg width="${size}" height="${size}" viewBox="0 0 64 64" fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">${b}</svg>`;
+  if(T>=4&&T<=6) return wrap(`<path d="M20 56V10" /><path d="M20 12h24l-6 8 6 8H20" fill="${color}" stroke-width="4"/>`);
+  if(T===36) return wrap(`<circle cx="32" cy="26" r="12"/><path d="M32 38v18"/>`);
+  if(T===26||T===27) return wrap(`<circle cx="32" cy="32" r="11" stroke-width="5"/><path d="M32 60V43"/><path d="M32 21V5"/><path d="M24 12l8-8 8 8"/>`);
+  if(T===28||T===29) return wrap(`<path d="M10 40h44l-8 12H18z" fill="${color}" stroke-width="3"/><path d="M22 40V24h20v16"/><path d="M32 24V12"/>`);
+  if(T>=1&&T<=3) return wrap(`<circle cx="32" cy="32" r="10" fill="${color}"/><circle cx="32" cy="32" r="20" stroke-width="4"/>`);
+  if(T===12||T===13){const s=T===12?1:-1;return wrap(`<path d="M${32-12*s} 56V28a12 12 0 0 1 ${24*s} 0v6"/><path d="M${32+12*s-8} 30l8 9 8-9"/>`)}
+  return wrap(`<g transform="rotate(${rot??0} 32 40)"><path d="M32 58V14"/><path d="M18 27L32 12l14 15"/></g>`);
+}
+
+/* ---------- Fahrt: Simulation und GPS-Navigation ---------- */
+const SIM={on:false,mode:"sim",run:false,s:0,mult:10,view:"3d",voice:true,last:0,T:null,Hprev:null,said:{},userHold:0,bearing:0,doneT:0,lastHud:0,
+  target:0,fixT:0,gpsSpeed:0,acc:null,off:0,lastReroute:0,rerouting:false,watch:null,wake:null,arrived:false,overT:0,overSaid:0};
+function beginDrive(mode,s0){
+  if(!R)return;
+  Object.assign(SIM,{on:true,mode,run:mode==="sim",s:s0,target:s0,T:null,Hprev:null,said:{},arrived:false,off:0,fixT:0,gpsSpeed:0,userHold:0});
+  SIM.mult=+$("#sMult").value;SIM.bearing=headingAt(s0);
+  document.body.classList.add("sim");document.body.classList.toggle("gps",mode==="gps");
+  $("#hud").hidden=false;$("#arrived").hidden=true;popup?.remove();
+  if(isMobile())collapseSheet(true);
+  updatePlayBtn();updateViewBtn();updateVoiceBtn();
+  if(SIM.voice)speak((mode==="gps"?"Navigation gestartet. ":"Simulation gestartet. ")+(R.mans[R.mi[idxAt(s0)]]?.verbal_pre_transition_instruction||""));
+  map.jumpTo({center:posAt(s0),zoom:18.6,pitch:SIM.view==="3d"?62:0,bearing:SIM.view==="3d"?SIM.bearing:0});
+  SIM.last=performance.now();requestAnimationFrame(tick);
+}
+function stopDrive(){
+  if(SIM.watch!=null){navigator.geolocation.clearWatch(SIM.watch);SIM.watch=null}
+  releaseWake();
+  if(!SIM.on)return; SIM.on=false;SIM.run=false;
+  document.body.classList.remove("sim","gps"); $("#hud").hidden=true;
+  try{speechSynthesis.cancel()}catch(e){}
+  if(map.getSource("gespann")){map.getSource("gespann").setData(EMPTY);map.getSource("gpos").setData(EMPTY);map.getSource("done").setData(EMPTY)}
+  if(isMobile())collapseSheet(false);
+  if(R)fitRoute();
+}
+async function startNav(){
+  setStatus("Standort wird bestimmt …");
+  let p;try{p=await getPos()}catch(e){setStatus(geoErr(e),true);return}
+  const lng=p.coords.longitude,lat=p.coords.latitude;
+  let m=project(R,lng,lat,0,R.n-1);
+  if(m.lat>200){
+    setStatus("Du bist nicht auf der Route. Sie wird ab deinem Standort neu berechnet …");
+    WPS[0]={label:"Mein Standort",lat,lon:lng};renderWps();updateMarkers();
+    if(!await calcRoute())return;
+    m=project(R,lng,lat,0,R.n-1);
+  }
+  setStatus("");
+  beginDrive("gps",m.s);
+  onFix(p);
+  SIM.watch=navigator.geolocation.watchPosition(onFix,e=>{$("#hGps").textContent=geoErr(e)},{enableHighAccuracy:true,maximumAge:1000,timeout:30000});
+  requestWake();
+}
+function onFix(p){
+  if(!SIM.on||SIM.mode!=="gps"||SIM.rerouting)return;
+  const c=p.coords,lng=c.longitude,lat=c.latitude,now=performance.now();
+  SIM.acc=c.accuracy;
+  let m=project(R,lng,lat,idxAt(SIM.target-300),idxAt(SIM.target+4000)+1);
+  const tol=Math.max(45,(c.accuracy||20)*1.5);
+  if(m.lat>tol){const g=project(R,lng,lat,idxAt(SIM.target-500),R.n-1);if(g.lat<m.lat)m=g}
+  if(m.lat>tol){
+    SIM.off++;$("#hGps").innerHTML=`<b>Abseits der Route</b> (${Math.round(m.lat)} m)`;
+    if(SIM.off>=3&&now-SIM.lastReroute>15000)reroute(lng,lat);
+    return;
+  }
+  SIM.off=0;
+  const prevT=SIM.target,prevFix=SIM.fixT;SIM.target=m.s;SIM.fixT=now;
+  if(!prevFix)SIM.s=m.s;
+  SIM.gpsSpeed=c.speed!=null&&!isNaN(c.speed)?c.speed:(prevFix?Math.max(0,(m.s-prevT)/((now-prevFix)/1000)):0);
+  $("#hGps").textContent=`GPS ±${Math.round(c.accuracy||0)} m`;
+  if(!SIM.arrived&&m.s>R.len-40){SIM.arrived=true;arrive()}
+}
+async function reroute(lng,lat){
+  SIM.rerouting=true;SIM.lastReroute=performance.now();
+  $("#mDist").textContent="Neue Route";$("#mInstr").textContent="Route wird ab deiner Position neu berechnet …";$("#mThen").hidden=true;
+  if(SIM.voice)speak("Route wird neu berechnet.");
+  const passed=R.legEnds.filter(e=>e<SIM.target+50).length;
+  WPS=[{label:"Mein Standort",lat,lon:lng},...WPS.slice(1+Math.min(passed,WPS.length-2))];
+  renderWps();updateMarkers();
+  const ok=await calcRoute({keepNav:true});
+  if(ok){Object.assign(SIM,{s:0,target:0,T:null,Hprev:null,said:{},off:0,fixT:0});SIM.bearing=headingAt(0)}
+  SIM.rerouting=false;
+}
+async function requestWake(){try{SIM.wake=await navigator.wakeLock?.request("screen")}catch(e){SIM.wake=null}}
+function releaseWake(){try{SIM.wake?.release()}catch(e){}SIM.wake=null}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&SIM.on&&SIM.mode==="gps")requestWake()});
+
+function idxAt(s,RR=R){if(s<=0)return 0;if(s>=RR.len)return RR.n-2;let lo=0,hi=RR.n-1;while(lo<hi-1){const m=(lo+hi)>>1;if(RR.cum[m]<=s)lo=m;else hi=m}return lo}
+function posAt(s,RR=R){s=Math.max(0,Math.min(RR.len,s));const i=idxAt(s,RR);const a=RR.pts[i],b=RR.pts[Math.min(i+1,RR.n-1)];const L=RR.cum[Math.min(i+1,RR.n-1)]-RR.cum[i];const t=L>0?(s-RR.cum[i])/L:0;return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]}
+function headingAt(s){const a=toM(...posAt(s-4)),b=toM(...posAt(s+4));if(a[0]===b[0]&&a[1]===b[1])return SIM.bearing||0;return Math.atan2(b[0]-a[0],b[1]-a[1])/D2R}
+function timeAt(s){const i=idxAt(s);return R.cumT[i]+(s-R.cum[i])/R.v[i]}
+function seekTo(s){SIM.s=Math.max(0,Math.min(R.len-0.5,s));SIM.T=null;SIM.Hprev=null;SIM.said={};SIM.userHold=0;$("#arrived").hidden=true;if(!SIM.run)render(0)}
+
+function tick(now){
+  if(!SIM.on)return;
+  const dt=Math.min(0.1,(now-SIM.last)/1000); SIM.last=now;
+  if(SIM.mode==="sim"&&SIM.run){
+    let budget=dt*SIM.mult;
+    while(budget>0&&SIM.s<R.len){const i=idxAt(SIM.s);const v=R.v[i];const segEnd=R.cum[Math.min(i+1,R.n-1)];const need=(segEnd-SIM.s)/v;if(need>=budget||need<=0){SIM.s+=v*budget;budget=0}else{SIM.s=segEnd+1e-6;budget-=need}}
+    if(SIM.s>=R.len){SIM.s=R.len;SIM.run=false;updatePlayBtn();arrive()}
+  } else if(SIM.mode==="gps"&&SIM.fixT&&!SIM.rerouting){
+    const pred=Math.min(R.len,SIM.target+SIM.gpsSpeed*Math.min(2.5,(now-SIM.fixT)/1000));
+    SIM.s+=(pred-SIM.s)*Math.min(1,dt*3);
+  }
+  if(!SIM.rerouting)render(dt);
+  requestAnimationFrame(tick);
+}
+function arrive(){
+  $("#arrived").hidden=false;
+  if(SIM.mode==="sim"){const at=new Date(departDate().getTime()+R.time*1000);$("#arrivedTxt").textContent=`${fmtKm(R.len)} in ${fmtDur(R.time)}, Ankunft ${fmtClock(at)} Uhr (ohne Pausen).`}
+  else $("#arrivedTxt").textContent=`Gute Erholung! Ankunft ${fmtClock(new Date())} Uhr.`;
+  if(SIM.voice)speak("Sie haben Ihr Ziel erreicht. Gute Erholung!");
+}
+
+/* Gespann-Geometrie: Hinterachse des Zugfahrzeugs folgt der Route, der Wohnwagen folgt der Kupplung (Schleppkurve). */
+function render(dt){
+  const z=G.zug,w=G.ww,s=SIM.s;
+  const p=posAt(s), P=toM(...p), k=1/Math.cos(p[1]*D2R);
+  const h=headingAt(s)*D2R, f=[Math.sin(h),Math.cos(h)];
+  const rearOv=0.95, hitchOff=rearOv+0.2, deich=1.3, bodyL=Math.max(w.laenge-deich,1), d=deich+bodyL/2;
+  const H=[P[0]-f[0]*hitchOff*k,P[1]-f[1]*hitchOff*k];
+  const moved=SIM.Hprev?Math.hypot(H[0]-SIM.Hprev[0],H[1]-SIM.Hprev[1])/k:1e9;
+  if(!SIM.T||moved>25){
+    const back=s-hitchOff-d;
+    SIM.T=back>=0?toM(...posAt(back)):[H[0]-f[0]*d*k,H[1]-f[1]*d*k];
+  } else {
+    const steps=Math.max(1,Math.ceil(moved/0.25));
+    for(let j=1;j<=steps;j++){const hx=SIM.Hprev[0]+(H[0]-SIM.Hprev[0])*j/steps,hy=SIM.Hprev[1]+(H[1]-SIM.Hprev[1])*j/steps;const vx=SIM.T[0]-hx,vy=SIM.T[1]-hy,L=Math.hypot(vx,vy)||1;SIM.T=[hx+vx/L*d*k,hy+vy/L*d*k]}
+  }
+  SIM.Hprev=H;
+  const T=SIM.T, ph=Math.atan2(H[0]-T[0],H[1]-T[1]), g=[Math.sin(ph),Math.cos(ph)];
+  const feats=[];
+  const box=(c,dir,len,wid,b,t,col)=>{const fx=dir[0],fy=dir[1],rx=dir[1],ry=-dir[0],l=len/2*k,ww=wid/2*k;const q=[[c[0]+fx*l+rx*ww,c[1]+fy*l+ry*ww],[c[0]+fx*l-rx*ww,c[1]+fy*l-ry*ww],[c[0]-fx*l-rx*ww,c[1]-fy*l-ry*ww],[c[0]-fx*l+rx*ww,c[1]-fy*l+ry*ww]].map(v=>fromM(v[0],v[1]));q.push(q[0]);feats.push({type:"Feature",geometry:{type:"Polygon",coordinates:[q]},properties:{b,t,c:col}})};
+  const off=(o,dir,a,side=0)=>{const r=[dir[1],-dir[0]];return [o[0]+dir[0]*a*k+r[0]*side*k,o[1]+dir[1]*a*k+r[1]*side*k]};
+  const body="#7d8b99", glass="#1d252f";
+  box(off(P,f,z.laenge/2-rearOv),f,z.laenge,z.breite,0.3,1.05,body);
+  box(off(P,f,z.laenge/2-rearOv-0.25),f,z.laenge-0.9,z.breite-0.06,1.05,Math.max(1.1,z.hoehe-0.18),glass);
+  box(off(P,f,z.laenge/2-rearOv-0.35),f,z.laenge-1.1,z.breite-0.04,Math.max(1.1,z.hoehe-0.18),z.hoehe,body);
+  box(off(P,f,z.laenge-rearOv-0.12),f,0.2,z.breite-0.2,0.45,0.75,"#e8e2b8");
+  for(const ax of [0,z.radstand])for(const sd of [-1,1])box(off(P,f,ax,sd*(z.breite/2-0.22)),f,0.7,0.24,0,0.7,"#121418");
+  const front=[T[0]+g[0]*(bodyL/2)*k,T[1]+g[1]*(bodyL/2)*k];
+  box([(front[0]+H[0])/2,(front[1]+H[1])/2],g,Math.hypot(H[0]-front[0],H[1]-front[1])/k,0.22,0.38,0.55,"#3b4450");
+  box(T,g,bodyL,w.breite,0.35,1.0,"#f3f4f1");
+  box(T,g,bodyL+0.02,w.breite+0.02,1.0,1.12,"#1b4d9b");
+  box(T,g,bodyL,w.breite,1.12,Math.max(1.2,w.hoehe-0.22),"#f3f4f1");
+  box(off(T,g,bodyL*0.08),g,0.9,0.8,Math.max(1.2,w.hoehe-0.22),w.hoehe,"#d7dbdf");
+  box(off(T,g,-bodyL/2+0.05),g,0.1,w.breite-0.3,0.6,0.85,"#c0281e");
+  for(const sd of [-1,1])box(off(T,g,0,sd*(w.breite/2-0.28)),g,0.68,0.22,0,0.68,"#121418");
+  map.getSource("gespann").setData({type:"FeatureCollection",features:feats});
+  map.getSource("gpos").setData({type:"FeatureCollection",features:[{type:"Feature",geometry:{type:"Point",coordinates:p},properties:{}}]});
+
+  // Kamera folgt, außer während der Nutzer selbst zoomt, dreht oder die Karte verschiebt
+  SIM.bearing += angDiff(SIM.bearing,headingAt(s+12))*Math.min(1,(dt||0.016)*2.5);
+  const hold=performance.now()<SIM.userHold+4000;
+  if(!hold && !map.isMoving()){
+    if(SIM.view==="3d"){const ahead=posAt(s+Math.min(40,8+R.v[idxAt(s)]*0.8));map.jumpTo({center:ahead,bearing:SIM.bearing,pitch:62})}
+    else if(SIM.view==="2d"){map.jumpTo({center:p,bearing:0,pitch:0})}
+  }
+  const now=performance.now();
+  if(now-SIM.lastHud>120||!SIM.run){SIM.lastHud=now;updateHud(s)}
+  if(now-SIM.doneT>700){SIM.doneT=now;const i=idxAt(s);map.getSource("done").setData({type:"FeatureCollection",features:i>0?[{type:"Feature",geometry:{type:"LineString",coordinates:[...R.pts.slice(0,i+1),p]},properties:{}}]:[]})}
+}
+function updateHud(s){
+  if(SIM.rerouting)return;
+  const i=idxAt(s), k=R.mi[i], nx=R.mans[k+1], nn=R.mans[k+2];
+  const cc=R.cc[i]||"DE", lim=caps(cc)[R.cls[i]||"land"];
+  const kmh=SIM.mode==="gps"?Math.round(SIM.gpsSpeed*3.6):SIM.run?Math.round(R.v[i]*3.6):0;
+  $("#hSpeed").textContent=kmh;
+  const over=SIM.mode==="gps"&&kmh>lim+3;
+  $("#hSpeedBox").classList.toggle("over",over);
+  if(over){const now=performance.now();if(!SIM.overT)SIM.overT=now;if(SIM.voice&&now-SIM.overT>5000&&now-SIM.overSaid>60000){SIM.overSaid=now;speak(`Achtung, Tempolimit für Gespanne: ${lim}.`)}}else SIM.overT=0;
+  $("#hLimit").textContent=lim; $("#hCC").textContent=cc; $("#hCC").title=CC_NAME[cc]||cc;
+  $("#hRest").textContent=fmtKm(R.len-s);
+  const tLeft=R.time-timeAt(s); $("#hTime").textContent=fmtDur(tLeft);
+  const eta=SIM.mode==="gps"?new Date(Date.now()+tLeft*1000):new Date(departDate().getTime()+R.time*1000);
+  $("#hEta").textContent=fmtClock(eta);
+  $("#sSeek").value=Math.round(s/R.len*1000);
+  const vNow=SIM.mode==="gps"?Math.max(SIM.gpsSpeed,8):R.v[i];
+  const talk=SIM.voice&&(SIM.mode==="gps"||(SIM.run&&SIM.mult<=10));
+  if(nx){
+    const dist=R.cum[nx.b]-s;
+    $("#mDist").textContent=fmtKm(dist); $("#mInstr").textContent=nx.instruction; $("#mArrow").outerHTML=arrowSvg(nx.type,64,"#fff").replace("<svg",'<svg class="arrow" id="mArrow"');
+    if(nn&&R.cum[nn.b]-R.cum[nx.b]<400){$("#mThen").hidden=false;$("#mThen").innerHTML=`Danach ${arrowSvg(nn.type,18,"#fff")} ${esc(nn.instruction)}`}else $("#mThen").hidden=true;
+    if(talk){
+      const key=k+1, far=Math.max(500,vNow*30);
+      if(dist<far&&dist>far*0.6&&!SIM.said["f"+key]&&R.cum[nx.b]-R.cum[R.mans[k].b]>far){SIM.said["f"+key]=1;speak(`In ${spokenDist(dist)} ${lowerFirst(nx.verbal_succinct_transition_instruction||nx.verbal_pre_transition_instruction||nx.instruction)}`)}
+      if(dist<Math.max(70,vNow*7)&&!SIM.said["n"+key]){SIM.said["n"+key]=1;SIM.said["f"+key]=1;speak(nx.verbal_pre_transition_instruction||nx.instruction)}
+    }
+  } else { $("#mDist").textContent="Ziel"; $("#mInstr").textContent=R.mans[k]?.instruction||""; $("#mThen").hidden=true }
+  // Steigungswarnung
+  const wb=$("#hWarn"),P=R.profile;
+  const sec=P?.secs.find(x=>x.s1>s&&x.s0-s<3000);
+  if(sec){
+    const inside=s>=sec.s0, down=sec.dir<0;
+    wb.hidden=false;wb.className="wbanner s"+sec.sev;
+    wb.innerHTML=`<svg class="wtri" viewBox="0 0 40 36" aria-hidden="true"><path d="M20 2L38 34H2z" fill="#fff" stroke="#d0261d" stroke-width="3.5" stroke-linejoin="round"/><text x="20" y="29" text-anchor="middle" font-size="11" font-weight="700" fill="#111" font-family="Arial">${Math.round(Math.abs(sec.avg))}%</text></svg>
+      <div><b>${down?"Gefälle":"Steigung"} ${pct(sec.avg)} ${inside?`noch ${fmtKm(sec.s1-s)}`:`in ${fmtKm(sec.s0-s)}`}</b>${down?"Kleinen Gang einlegen, Motorbremse nutzen, nicht dauerhaft bremsen.":"Früh zurückschalten, Motortemperatur beobachten."} Abschnitt ${fmtKm(sec.len)}.</div>`;
+    const key="g"+sec.s0;
+    if(talk&&!inside&&sec.s0-s<1500&&!SIM.said[key]){SIM.said[key]=1;speak(`Achtung, in ${spokenDist(sec.s0-s)} ${down?"Gefälle":"Steigung"} von ${Math.round(Math.abs(sec.avg))} Prozent über ${spokenLen(sec.len)}.${down?" Bitte einen kleinen Gang einlegen.":""}`)}
+  } else wb.hidden=true;
+  // Nächster Rastplatz
+  const nr=R.stops?.rast.find(x=>x.s>s+200);
+  $("#hNext").innerHTML=nr?`Nächster Rastplatz: <b>${esc(nr.name)}</b> in ${fmtKm(nr.s-s)}`:"";
+}
+const lowerFirst=t=>t.charAt(0).toLowerCase()+t.slice(1);
+const spokenDist=d=>d>=1000?`${(Math.round(d/100)/10).toString().replace(".",",")} Kilometern`:`${Math.round(d/100)*100||50} Metern`;
+const spokenLen=d=>d>=1000?`${(Math.round(d/100)/10).toString().replace(".",",")} Kilometer`:`${Math.round(d/100)*100} Meter`;
+let deVoice=null;
+function speak(t){try{const u=new SpeechSynthesisUtterance(t);u.lang="de-DE";u.rate=1.04;if(!deVoice){deVoice=speechSynthesis.getVoices().find(v=>v.lang&&v.lang.startsWith("de"))||null}if(deVoice)u.voice=deVoice;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
+
+function updatePlayBtn(){$("#sPlay").innerHTML=SIM.run?`<svg width="18" height="18" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" fill="currentColor"/><rect x="14" y="5" width="4" height="14" fill="currentColor"/></svg>`:`<svg width="18" height="18" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>`;$("#sPlay").setAttribute("aria-label",SIM.run?"Pause":"Weiterfahren")}
+const VIEWS={"3d":"3D-Verfolgung","2d":"Draufsicht, Norden oben","free":"Freie Karte"};
+function updateViewBtn(){const b=$("#sView");b.title="Ansicht: "+VIEWS[SIM.view];b.innerHTML=SIM.view==="3d"?`<span style="font:700 14px var(--f-display)">3D</span>`:SIM.view==="2d"?`<span style="font:700 14px var(--f-display)">2D</span>`:`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg>`}
+function updateVoiceBtn(){const b=$("#sVoice");b.classList.toggle("active",SIM.voice);b.innerHTML=`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>${SIM.voice?'<path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>':'<path d="M17 9l5 6M22 9l-5 6"/>'}</svg>`}
+
+/* ---------- Bedienung ---------- */
+function collapseSheet(c){$("#panel").classList.toggle("collapsed",c);$("#sheetToggle").style.transform=c?"rotate(0deg)":"rotate(180deg)"}
+function showTab(t){for(const b of document.querySelectorAll(".tab"))b.setAttribute("aria-selected",String(b.dataset.tab===t));for(const x of ["route","stops","gespann"])$("#body-"+x).hidden=t!==x;if(isMobile())collapseSheet(false)}
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+$("#sheetToggle").onclick=()=>collapseSheet(!$("#panel").classList.contains("collapsed"));
+$("#calc").onclick=()=>calcRoute();
+$("#addVia").onclick=()=>{if(WPS.length>=6)return;WPS.splice(WPS.length-1,0,null);renderWps();$("#wp"+(WPS.length-2)).focus()};
+$("#swap").onclick=()=>{WPS.reverse();renderWps();updateMarkers();markRouteStale()};
+["optToll","optFerry","optHwy"].forEach(id=>$("#"+id).onchange=markRouteStale);
+$("#depart").onchange=()=>{if(R)renderResult()};
+FIELDS.concat(["fs","tempo100"]).forEach(id=>$("#"+id).addEventListener("change",readGespannForm));
+$("#resetG").onclick=()=>{G=structuredClone(DEFAULT_G);store.set("gespann",G);fillGespannForm();renderGespann();markRouteStale()};
+$("#sPlay").onclick=()=>{if(SIM.s>=R.len){seekTo(0)}SIM.run=!SIM.run;SIM.last=performance.now();updatePlayBtn();$("#arrived").hidden=true};
+$("#sMult").onchange=e=>{SIM.mult=+e.target.value};
+$("#sSeek").oninput=e=>seekTo(+e.target.value/1000*R.len);
+$("#zIn").onclick=()=>map.zoomIn({duration:250});
+$("#zOut").onclick=()=>map.zoomOut({duration:250});
+$("#sView").onclick=()=>{SIM.view=SIM.view==="3d"?"2d":SIM.view==="2d"?"free":"3d";SIM.userHold=0;if(SIM.view==="2d")map.jumpTo({zoom:Math.min(map.getZoom(),17.5)});updateViewBtn()};
+$("#sVoice").onclick=()=>{SIM.voice=!SIM.voice;if(!SIM.voice)try{speechSynthesis.cancel()}catch(e){};updateVoiceBtn()};
+$("#sStop").onclick=stopDrive;
+$("#arrivedOk").onclick=()=>{$("#arrived").hidden=true};
+document.addEventListener("keydown",e=>{if(!SIM.on||e.target.closest("input,select"))return;if(e.code==="Space"&&SIM.mode==="sim"){e.preventDefault();$("#sPlay").click()}});
+
+(function init(){
+  const d=new Date();d.setMinutes(0,0,0);d.setHours(d.getHours()+1);
+  const pad=n=>String(n).padStart(2,"0");
+  $("#depart").value=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`;
+  fillGespannForm(); renderGespann(); renderWps(); renderPresets(); collapseSheet(false);
+  if(typeof maplibregl==="undefined"){setStatus("Kartenbibliothek konnte nicht geladen werden. Internetverbindung prüfen.",true);return}
+  initMap();
+  if(location.protocol==="https:"&&"serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+})();
+</script>
+</body>
+</html>
