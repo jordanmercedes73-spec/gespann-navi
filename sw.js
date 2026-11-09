@@ -1,6 +1,6 @@
 // Gespann-Navi: App-Hülle für Start ohne Netz zwischenspeichern.
 // Karten, Routen, Suche und Verkehr kommen immer live aus dem Netz.
-const CACHE = "gespann-navi-v5";
+const CACHE = "gespann-navi-v6";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png",
   "https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.js",
   "https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.css"];
