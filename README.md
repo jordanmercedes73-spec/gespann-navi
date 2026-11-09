@@ -2,6 +2,8 @@
 
 Navigation für Pkw mit Wohnwagen: Routen nach Höhe, Breite, Länge und Gewicht des Gespanns,
 Tempolimits für Gespanne pro Land, Höhenprofil mit Warnung vor steilen Abschnitten,
+Alternativrouten mit Verbrauchsschätzung, Warnung vor Engstellen
+(Höhe, Breite, Gewicht) und vor der für Gespanne ungeeigneten Pkw-Route,
 Campingplätze rund ums Ziel, Live-Verkehrslage auf deutschen Autobahnen
 (Stau, Unfälle, Sperrungen, Baustellen, mit Umfahrung), 3D-Simulation und GPS-Navigation.
 

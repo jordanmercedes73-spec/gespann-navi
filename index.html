@@ -212,6 +212,27 @@ body:not(.gps) .gpsonly{display:none!important}
 .mk{border-color:#fff!important;box-shadow:0 1px 6px rgba(0,0,0,.45)!important}
 .mk.start{background:#1a1a1d} .mk.ziel{background:var(--sign);border-radius:5px} .mk.via{background:#ffd23f}
 
+/* Routenwahl */
+.rcards{display:flex;flex-direction:column;gap:8px}
+.rcard{display:flex;flex-direction:column;gap:4px;text-align:left;width:100%;background:var(--raise);border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;color:var(--ink)}
+.rcard:hover{border-color:#4a4a52}
+.rcard.on{border-color:var(--sign);box-shadow:inset 3px 0 0 var(--sign)}
+.rcard.bad{cursor:default;border-color:rgba(255,90,79,.45);background:rgba(255,90,79,.06)}
+.rc-top{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.rc-lab{font:700 12px/1 var(--f-display);letter-spacing:.08em;text-transform:uppercase;padding:4px 6px 3px;border-radius:4px;background:var(--field);border:1px solid var(--line);color:var(--muted)}
+.rc-lab.fast{background:var(--sign);border-color:var(--sign);color:var(--sign-ink)}
+.rc-lab.eco{background:#1f9d57;border-color:#1f9d57;color:#fff}
+.rc-lab.bad{background:#d63a30;border-color:#d63a30;color:#fff}
+.rc-main{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+.rc-main b{font:700 22px/1.1 var(--f-display);font-variant-numeric:tabular-nums}
+.rc-main span{color:var(--muted);font-size:13.5px;font-variant-numeric:tabular-nums}
+.rc-sub{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.rc-sub b{color:var(--ink);font-weight:600}
+.rc-why{margin:2px 0 0;padding-left:16px;font-size:13px;color:var(--ink)}
+.haz{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.haz li{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;cursor:pointer;background:var(--raise)}
+.haz li.bad{border-color:rgba(255,90,79,.55)}
+.hsign{width:34px;height:34px;border-radius:50%;background:#fff;border:4px solid #d0261d;display:grid;place-items:center;font:700 11px/1 var(--f-display);color:#111;flex:none;text-align:center}
 /* Verkehrslage */
 .tlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .tlist li{display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:start;padding:8px 10px;border:1px solid var(--line);border-radius:8px;cursor:pointer;font-size:13.5px}
@@ -266,7 +287,7 @@ body:not(.gps) .gpsonly{display:none!important}
         <div class="brand-mark" aria-hidden="true">
           <svg width="28" height="19" viewBox="0 0 26 18"><rect x="1" y="5" width="8" height="8" rx="1.5" fill="#140b04"/><rect x="11" y="2" width="14" height="11" rx="2" fill="#140b04"/><line x1="9" y1="11" x2="11" y2="11" stroke="#140b04" stroke-width="1.6"/><circle cx="4" cy="14.5" r="2.2" fill="#140b04" stroke="#d9772f" stroke-width="1"/><circle cx="18" cy="14.5" r="2.2" fill="#140b04" stroke="#d9772f" stroke-width="1"/></svg>
         </div>
-        <div><h1>Gespann<span>-Navi</span></h1><small>Routen für Pkw mit Wohnwagen · <span id="appVersion">Version 8</span></small></div>
+        <div><h1>Gespann<span>-Navi</span></h1><small>Routen für Pkw mit Wohnwagen · <span id="appVersion">Version 9</span></small></div>
         <button id="sheetToggle" aria-label="Planung ein- oder ausklappen"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 15l6-6 6 6"/></svg></button>
       </div>
       <div class="tabs" role="tablist">
@@ -344,6 +365,15 @@ body:not(.gps) .gpsonly{display:none!important}
         </div>
       </div>
       <div class="group">
+        <h2>Verbrauch</h2>
+        <div class="grid2">
+          <label class="f"><span class="lab">Kraftstoff</span>
+            <select class="inp" id="fuel"><option value="diesel">Diesel</option><option value="benzin">Benzin</option></select></label>
+          <label class="f"><span class="lab">Preis pro Liter</span><div class="unit"><input class="inp" type="number" step="0.01" id="preis"><span>€</span></div></label>
+        </div>
+        <p class="note" style="margin-top:6px">Für die Verbrauchsschätzung der Routen. Gerechnet wird mit Gewicht, Stirnfläche, Tempo und Steigungen des Gespanns.</p>
+      </div>
+      <div class="group">
         <h2>Gespann-Check</h2>
         <ul class="checks" id="checks"></ul>
       </div>
@@ -361,6 +391,7 @@ body:not(.gps) .gpsonly{display:none!important}
           <div class="main"><svg class="arrow" id="mArrow" viewBox="0 0 64 64"></svg><div><div class="dist" id="mDist">–</div><div class="instr" id="mInstr"></div></div></div>
           <div class="then" id="mThen" hidden></div>
         </div>
+        <div class="wbanner s2" id="hHaz" hidden></div>
         <div class="wbanner" id="hTraffic" hidden></div>
         <div class="wbanner" id="hWarn" hidden></div>
       </div>
@@ -409,7 +440,7 @@ let AVOID = [];   // Bereiche, die bei der Routenberechnung umfahren werden (Sta
 const DEFAULT_G = {
   zug:{name:"VW Multivan T7 (2025)",laenge:4.97,breite:1.94,hoehe:1.90,radstand:3.12,zgm:3000,leer:2200,anhaengelast:2000},
   ww:{name:"Hobby Excellent 465 (2011)",laenge:7.05,breite:2.30,hoehe:2.61,zgm:1500},
-  fs:"BE", tempo100:false
+  fs:"BE", tempo100:false, fuel:"diesel", preis:1.75
 };
 const PRESETS = [
   {n:"Rovinj (Istrien)",lat:45.0812,lon:13.6387},
@@ -429,6 +460,7 @@ const store = {
 };
 let G = structuredClone(store.get("gespann",DEFAULT_G));
 G.zug = Object.assign({},DEFAULT_G.zug,G.zug); G.ww = Object.assign({},DEFAULT_G.ww,G.ww);
+if(!G.fuel)G.fuel="diesel"; if(!(G.preis>0))G.preis=1.75;
 let WPS = [null,null];   // Start und Ziel sind beim Öffnen leer
 let R = null;          // Routenmodell
 let pickIdx = null;    // Wegpunkt, der per Karte gesetzt wird
@@ -500,12 +532,13 @@ const pct=g=>(Math.round(Math.abs(g)*10)/10).toString().replace(".",",")+" %";
 const FIELDS = ["zug_name","zug_laenge","zug_breite","zug_hoehe","zug_radstand","zug_zgm","zug_leer","zug_anhaengelast","ww_name","ww_laenge","ww_breite","ww_hoehe","ww_zgm"];
 function fillGespannForm(){
   for(const id of FIELDS){const [o,k]=id.split("_");$("#"+id).value=G[o][k]}
-  $("#fs").value=G.fs; $("#tempo100").checked=G.tempo100;
+  $("#fs").value=G.fs; $("#tempo100").checked=G.tempo100; $("#fuel").value=G.fuel; $("#preis").value=G.preis;
 }
 function readGespannForm(){
   for(const id of FIELDS){const [o,k]=id.split("_");const v=$("#"+id).value;G[o][k]=k==="name"?v:(parseFloat(v)||0)}
-  G.fs=$("#fs").value; G.tempo100=$("#tempo100").checked;
-  store.set("gespann",G); renderGespann(); markRouteStale();
+  G.fs=$("#fs").value; G.tempo100=$("#tempo100").checked; G.fuel=$("#fuel").value; G.preis=parseFloat($("#preis").value)||0;
+  store.set("gespann",G); renderGespann();
+  if(R&&R.cands&&document.activeElement&&/^(fuel|preis)$/.test(document.activeElement.id)){R.cands.forEach(c=>{if(c.profile)c.fuel=fuelEstimate(c)});renderRouteCards()} else markRouteStale();
 }
 function renderGespann(){ renderSideview(); renderChecks(); }
 
@@ -653,9 +686,12 @@ function initMap(){
   map.on("load",()=>{
     for(const k of ["camp","rest","services"]) map.addImage("i-"+k,iconImage(k),{pixelRatio:2});
     for(const k of ["stau","bau","sperr"]) map.addImage("t-"+k,trafficImage(k),{pixelRatio:2});
-    for(const id of ["pkw","route","done","steep","traffic","mans","pois","gespann","gpos"]) map.addSource(id,{type:"geojson",data:EMPTY});
+    for(const id of ["pkw","alts","route","done","steep","traffic","haz","mans","pois","gespann","gpos"]) map.addSource(id,{type:"geojson",data:EMPTY});
     // Die normale Karte bringt eigene 3D-Gebäude mit
     map.addLayer({id:"pkw",type:"line",source:"pkw",layout:{"line-join":"round","line-cap":"round"},paint:{"line-color":"#8a8a93","line-width":["interpolate",["linear"],["zoom"],5,2.5,14,6],"line-dasharray":[1.2,1.4],"line-opacity":.85}});
+    map.addImage("h-sign",hazImage(),{pixelRatio:2});
+    map.addLayer({id:"alts-case",type:"line",source:"alts",layout:{"line-join":"round","line-cap":"round"},paint:{"line-color":"#ffffff","line-width":["interpolate",["linear"],["zoom"],5,6,14,12]}});
+    map.addLayer({id:"alts",type:"line",source:"alts",layout:{"line-join":"round","line-cap":"round"},paint:{"line-color":"#8d8f96","line-width":["interpolate",["linear"],["zoom"],5,3.5,14,7]}});
     map.addLayer({id:"route-case",type:"line",source:"route",layout:{"line-join":"round","line-cap":"round"},paint:{"line-color":"#ffffff","line-width":["interpolate",["linear"],["zoom"],5,6,14,13,18,16,21,40]}});
     map.addLayer({id:"route",type:"line",source:"route",layout:{"line-join":"round","line-cap":"round"},paint:{"line-color":"#d9772f","line-width":["interpolate",["linear"],["zoom"],5,3.5,14,8,18,10,21,26],"line-opacity":["interpolate",["linear"],["zoom"],16,1,19,.75]}});
     map.addLayer({id:"steep",type:"line",source:"steep",layout:{"line-join":"round","line-cap":"round"},paint:{"line-color":["get","c"],"line-width":["interpolate",["linear"],["zoom"],5,3.5,14,8,18,10,21,26]}});
@@ -669,6 +705,12 @@ function initMap(){
     map.addLayer({id:"traffic-pt",type:"symbol",source:"traffic",filter:["==",["geometry-type"],"Point"],layout:{"icon-image":["concat","t-",["get","k"]],"icon-size":["interpolate",["linear"],["zoom"],5,0.55,10,0.8,15,1],"icon-allow-overlap":true,"symbol-sort-key":["-",3,["get","sev"]]}});
     map.addLayer({id:"gespann",type:"fill-extrusion",source:"gespann",paint:{"fill-extrusion-color":["get","c"],"fill-extrusion-height":["get","t"],"fill-extrusion-base":["get","b"],"fill-extrusion-opacity":1}});
     map.addLayer({id:"gpos",type:"circle",source:"gpos",paint:{"circle-radius":["interpolate",["linear"],["zoom"],5,6,15,9],"circle-color":"#d9772f","circle-stroke-color":"#1a1a1d","circle-stroke-width":2.5,"circle-opacity":["interpolate",["linear"],["zoom"],15.5,1,16.5,0],"circle-stroke-opacity":["interpolate",["linear"],["zoom"],15.5,1,16.5,0]}});
+    map.addLayer({id:"haz",type:"symbol",source:"haz",layout:{"icon-image":"h-sign","icon-size":["interpolate",["linear"],["zoom"],5,0.8,12,1.15],"icon-allow-overlap":true,"text-allow-overlap":true,
+      "text-field":["get","t"],"text-font":["Noto Sans Bold"],"text-size":["interpolate",["linear"],["zoom"],5,9,12,11.5]},paint:{"text-color":"#111111"}});
+    map.on("click","alts",e=>{const f=e.features[0];if(f&&!SIM.on)selectRoute(+f.properties.k)});
+    map.on("mouseenter","alts",()=>map.getCanvas().style.cursor="pointer");
+    map.on("mouseleave","alts",()=>map.getCanvas().style.cursor="");
+    map.on("click","haz",e=>{const f=e.features[0];if(f)openHaz(f.properties.src,+f.properties.i)});
     map.on("click","pois",e=>{const f=e.features[0];if(f)openPoi(+f.properties.id)});
     map.on("click","traffic-pt",e=>{const f=e.features[0];if(f)openTraffic(+f.properties.id)});
     map.on("mouseenter","traffic-pt",()=>map.getCanvas().style.cursor="pointer");
@@ -695,14 +737,16 @@ function updateMarkers(){
 /* ---------- Routing ---------- */
 function markRouteStale(){ if(R && !SIM.on){ setStatus("Eingaben geändert. Route neu berechnen, damit sie gilt."); } }
 function setStatus(t,err){const s=$("#routeStatus");s.hidden=!t;s.textContent=t||"";s.classList.toggle("err",!!err)}
-async function valhalla(costing,opts,locs){
+async function valhallaAll(costing,opts,locs,alternates=0){
   const body={locations:locs.map(w=>({lat:w.lat,lon:w.lon,type:"break"})),costing,costing_options:{[costing]:opts},language:"de-DE",units:"kilometers",directions_type:"instructions"};
+  if(alternates)body.alternates=alternates;
   if(AVOID.length)body.exclude_polygons=AVOID.map(a=>a.ring);
   const r=await fetch(VALHALLA+"/route",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   const j=await r.json();
   if(!j.trip) throw new Error(j.error||"Keine Route gefunden");
-  return j.trip;
+  return [j.trip,...(j.alternates||[]).map(a=>a.trip).filter(Boolean)];
 }
+const valhalla=async(costing,opts,locs)=>(await valhallaAll(costing,opts,locs))[0];
 async function calcRoute(opt={}){
   if(WPS.some(w=>!w)){setStatus(!WPS[0]&&!WPS[WPS.length-1]?"Bitte Start und Ziel eingeben.":!WPS[0]?"Bitte noch den Start eingeben oder auf den Pfeil-Knopf für deinen Standort tippen.":"Bitte noch das Ziel eingeben.",true);return false}
   if(!opt.keepNav) stopDrive();
@@ -713,16 +757,25 @@ async function calcRoute(opt={}){
   $("#calc").disabled=true; if(!opt.keepNav){setStatus("Route wird berechnet …"); $("#result").hidden=true;}
   const locs=WPS.slice();
   try{
-    const [tg,ta]=await Promise.allSettled([valhalla("truck",truckOpts,locs),opt.keepNav?Promise.reject(new Error("skip")):valhalla("auto",autoOpts,locs)]);
+    const more=!opt.keepNav;
+    const [tg,ta,tl]=await Promise.allSettled([valhallaAll("truck",truckOpts,locs,more&&locs.length===2?2:0),more?valhalla("auto",autoOpts,locs):Promise.reject(new Error("skip")),
+      more?valhalla("truck",Object.assign({},truckOpts,{use_highways:0.1}),locs):Promise.reject(new Error("skip"))]);
     if(tg.status!=="fulfilled"){
       const msg=String(tg.reason?.message||"");
       throw new Error(/No path|442/.test(msg)?"Für dieses Gespann wurde keine erlaubte Route gefunden. Vermutlich blockiert eine Höhen-, Breiten- oder Gewichtsgrenze den einzigen Weg. Prüfe die Maße oder setze ein Zwischenziel.":msg==="Failed to fetch"?msg:"Routenberechnung fehlgeschlagen: "+msg);
     }
-    R=buildModel(tg.value);
-    R.pkw=ta.status==="fulfilled"?{len:ta.value.summary.length,time:ta.value.summary.time,shape:joinShape(ta.value)}:null;
+    // Routenvarianten fürs Gespann sammeln, doppelte aussortieren
+    const cands=[];
+    const add=(trip,kind)=>{const c=buildModel(trip);if(cands.some(o=>Math.abs(o.len-c.len)<o.len*0.006&&Math.abs(o.time-c.time)<o.time*0.02))return;c.kind=kind;cands.push(c)};
+    tg.value.forEach((t,k)=>add(t,k?"Alternative":"Hauptroute"));
+    if(tl.status==="fulfilled")add(tl.value,"Ohne Autobahn");
+    const pkw=ta.status==="fulfilled"?{len:ta.value.summary.length,time:ta.value.summary.time,shape:joinShape(ta.value),model:buildModel(ta.value)}:null;
+    cands.forEach((c,k)=>{c.cands=cands;c.idx=k;c.pkw=pkw});
+    R=cands[0];
     drawRoute(!opt.keepNav); renderResult(); setStatus("");
     if(isMobile()&&!opt.keepNav)collapseSheet(false);
     enrich(R);
+    loadOtherProfiles(cands);
     return true;
   }catch(e){ setStatus(e.message==="Failed to fetch"?"Routing-Server nicht erreichbar. Internetverbindung prüfen und erneut versuchen.":e.message,true); return false }
   finally{$("#calc").disabled=false}
@@ -771,8 +824,9 @@ function projectFast(RR,lng,lat){
 function drawRoute(fit=true){
   const line=c=>({type:"FeatureCollection",features:[{type:"Feature",geometry:{type:"LineString",coordinates:c},properties:{}}]});
   map.getSource("route").setData(line(R.pts));
-  for(const id of ["done","steep","pois","traffic"])map.getSource(id).setData(EMPTY);
-  map.getSource("pkw").setData(R.pkw && Math.abs(R.pkw.len-R.len/1000)>1.5?line(R.pkw.shape):EMPTY);
+  for(const id of ["done","steep","pois","traffic","haz"])map.getSource(id).setData(EMPTY);
+  map.getSource("alts").setData({type:"FeatureCollection",features:(R.cands||[]).filter(c=>c!==R).map(c=>({type:"Feature",geometry:{type:"LineString",coordinates:c.pts},properties:{k:c.idx}}))});
+  map.getSource("pkw").setData(R.pkw&&R.pkw.differs&&R.pkw.reasons?.length?line(R.pkw.shape):EMPTY);
   map.getSource("mans").setData({type:"FeatureCollection",features:R.mans.map(m=>({type:"Feature",geometry:{type:"Point",coordinates:R.pts[m.b]},properties:{}}))});
   if(fit)fitRoute();
 }
@@ -807,6 +861,7 @@ function renderResult(){
   hints.push(`Die Route meidet Straßen mit eingetragener Durchfahrtshöhe unter ${fmtM(g.hoehe)}, Breite unter ${fmtM(g.breite)}, Länge unter ${fmtM(g.laenge)} und Gewichtsgrenzen unter ${(g.zgm/1000).toFixed(1).replace(".",",")} t. Nicht eingetragene Schilder kennt sie nicht.`);
 
   box.innerHTML=`
+    <div class="group"><h2>Routen für dein Gespann</h2><div class="rcards" id="routeCards"></div></div>
     <div class="sum">
       <div><div class="k">Strecke</div><div class="v">${fmtKm(R.len)}</div></div>
       <div><div class="k">Fahrzeit Gespann</div><div class="v">${fmtDur(R.time)} <small id="sumDelay" style="color:var(--bad);font-weight:600"></small></div></div>
@@ -818,7 +873,7 @@ function renderResult(){
       <button class="btn ghost" id="simStart"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>Simulation</button>
     </div>
     <div class="group" id="trafficBox" hidden></div>
-    ${cmp?`<p class="cmp">${cmp}</p>`:""}
+    <div class="group" id="hazBox" hidden></div>
     <div class="group" id="gradeBox"><h2>Höhenprofil und Steigungen</h2><p class="note">Höhendaten werden geladen …</p></div>
     <div class="group"><h2>Länder und Gespann-Tempo</h2><div class="countries">${R.order.map(c=>{const k=caps(c);return `<span class="cc" title="${CC_NAME[c]||c}"><span class="oval">${c}</span>${fmtKm(R.per[c])} · ${k.ab}/${k.land}</span>`}).join("")}</div>
       <p class="note" style="margin-top:6px">Zahlen: Autobahn/Landstraße in km/h für Pkw mit Wohnwagen. Richtwerte, vor der Reise beim ADAC prüfen.</p></div>
@@ -834,6 +889,7 @@ function renderResult(){
   $("#navStart").onclick=startNav;
   if(R.profile)renderGrades();
   renderTraffic(R.traffic?null:"loading");
+  renderRouteCards(); renderHazards();
 }
 function flyToS(s){ if(SIM.on)SIM.userHold=performance.now()+6000; map.flyTo({center:posAt(s),zoom:15.5,pitch:40,duration:900}); }
 function departDate(){const v=$("#depart").value;const d=v?new Date(v):new Date();return isNaN(d)?new Date():d}
@@ -843,6 +899,8 @@ function enrich(RR){
   loadGrades(RR).catch(()=>{ if(RR===R){const b=$("#gradeBox");if(b)b.innerHTML=`<h2>Höhenprofil und Steigungen</h2><p class="note">Höhendaten gerade nicht verfügbar.</p>`} });
   loadTraffic(RR).catch(()=>{ if(RR===R){RR.traffic={roads:[],items:[],t:Date.now(),errs:true};renderTraffic()} });
   loadStops(RR).catch(()=>{ if(RR===R)$("#stopsBody").innerHTML=`<p class="note">Camping- und Rastplätze konnten gerade nicht geladen werden.</p>` });
+  checkHazards(RR).catch(()=>{RR.hazards={err:true,list:[]};if(RR===R)renderHazards()});
+  checkPkw(RR).catch(()=>{if(RR.pkw){RR.pkw.checked=true;renderRouteCards()}});
 }
 async function loadGrades(RR){
   const n=RR.n, CH=8000, pts=[];
@@ -857,7 +915,6 @@ async function loadGrades(RR){
       pts.push({s:(RR.cum[i0]+RR.cum[i1])/2,e:e.mean_elevation,name:(e.names||[])[0]||""});
     }
   }
-  if(RR!==R)return;
   if(pts.length<5)throw new Error("keine Höhen");
   pts.sort((x,y)=>x.s-y.s);
   const step=100,N=Math.ceil(RR.len/step)+1,E=new Float32Array(N),NM=new Array(N);
@@ -875,8 +932,153 @@ async function loadGrades(RR){
   let up=0,down=0;for(let q=1;q<N;q++){const d=Sm[q]-Sm[q-1];if(d>0)up+=d;else down-=d}
   let mxI=0;for(let q=1;q<N;q++)if(Sm[q]>Sm[mxI])mxI=q;
   RR.profile={step,E:Sm,N,secs,up,down,max:{s:mxI*step,e:Sm[mxI],name:NM[mxI]}};
+  RR.fuel=fuelEstimate(RR);
+  renderRouteCards();
+  if(RR===R)showProfile();
+}
+function showProfile(){
   renderGrades();
-  map.getSource("steep").setData({type:"FeatureCollection",features:secs.map(x=>({type:"Feature",geometry:{type:"LineString",coordinates:sliceRoute(x.s0,Math.min(x.s1,RR.len))},properties:{c:x.sev===2?"#ff3b30":"#e6b400"}}))});
+  map.getSource("steep").setData({type:"FeatureCollection",features:R.profile.secs.map(x=>({type:"Feature",geometry:{type:"LineString",coordinates:sliceRoute(x.s0,Math.min(x.s1,R.len))},properties:{c:x.sev===2?"#ff3b30":"#e6b400"}}))});
+}
+async function loadOtherProfiles(cands){
+  for(const c of cands){ if(c.profile||c===cands[0])continue; if(R?.cands!==cands)return; try{await loadGrades(c)}catch(e){} }
+}
+/* Verbrauch: Rollwiderstand, Luftwiderstand, Steigungen und Anfahren; Motorwirkungsgrad grob nach Kraftstoff */
+function fuelEstimate(RR){
+  const P=RR.profile;if(!P)return null;
+  const g=gesamt(),m=(G.zug.leer+250)+G.ww.zgm*0.9,crr=0.012,cda=g.breite*g.hoehe*0.42,rho=1.2;
+  const diesel=G.fuel!=="benzin",eta=diesel?0.33:0.27,lhv=diesel?35.9e6:32.2e6,aux=diesel?0.6:0.8;
+  let E=0;
+  for(let i=0;i<P.N-1;i++){const v=RR.v[idxAt(i*P.step,RR)],gr=(P.E[i+1]-P.E[i])/P.step;const F=m*9.81*(crr+gr)+0.5*rho*cda*v*v;if(F>0)E+=F*P.step}
+  for(const mm of RR.mans){if(mm.type<=6||mm.type===36)continue;const i=Math.min(mm.b,RR.n-2);if(RR.cls[i]==="ab")continue;const v=RR.v[i];E+=0.5*m*v*v*0.6}
+  const l=E/(eta*lhv)+aux*RR.time/3600;
+  return {l,per100:l/(RR.len/1e5),eur:l*(G.preis||0)};
+}
+function viaNames(RR){
+  const tot={};for(const m of RR.mans){const n=(m.street_names||[]).find(x=>/^(A|E|B|SS|SR|S|D|R|H)\s?\d/.test(x));if(n)tot[n.replace(/\s+/g," ")]=(tot[n.replace(/\s+/g," ")]||0)+m.length}
+  let e=Object.entries(tot).sort((a,b)=>b[1]-a[1]);const nat=e.filter(x=>!/^E \d/.test(x[0]));if(nat.length>=2)e=nat;
+  return e.slice(0,4).map(x=>x[0]).join(", ");
+}
+function renderRouteCards(){
+  const box=$("#routeCards");if(!box||!R)return;
+  const C=R.cands||[R];
+  const fast=C.reduce((a,c)=>c.time<a.time?c:a);
+  const eco=C.length>1&&C.every(c=>c.fuel)?C.reduce((a,c)=>c.fuel.l<a.fuel.l?c:a):null;
+  const fmtL=v=>v<10?v.toFixed(1).replace(".",","):Math.round(v).toLocaleString("de-DE");
+  let h=C.map(c=>{
+    const labs=[];if(c===fast)labs.push('<span class="rc-lab fast">Schnellste</span>');if(c===eco)labs.push('<span class="rc-lab eco">Spritsparend</span>');if(!labs.length)labs.push(`<span class="rc-lab">${esc(c.kind)}</span>`);
+    if(c.kind==="Ohne Autobahn"&&c!==fast)labs.push('<span class="rc-lab">Ohne Autobahn</span>');
+    const fu=c.fuel?`Verbrauch ca. <b>${fmtL(c.fuel.l)} l</b> (${c.fuel.per100.toFixed(1).replace(".",",")} l/100 km)${G.preis?` · ca. <b>${fmtL(c.fuel.eur)} €</b>`:""}`:"Verbrauch wird berechnet …";
+    const up=c.profile?` · ↑ ${Math.round(c.profile.up).toLocaleString("de-DE")} Hm`:"";
+    const dt=c===fast?"":` <span>+${fmtDur(c.time-fast.time)}</span>`;
+    return `<button class="rcard ${c===R?"on":""}" data-k="${c.idx}" ${SIM.on?"disabled":""}><div class="rc-top">${[...new Set(labs)].join("")}</div>
+      <div class="rc-main"><b>${fmtDur(c.time)}</b><span>${fmtKm(c.len)}</span>${dt}</div>
+      <div class="rc-sub">${fu}${up}</div><div class="rc-sub">über ${esc(viaNames(c)||"Landstraßen")}${c.summary.has_toll?" · Maut":""}${c.summary.has_ferry?" · Fähre":""}</div></button>`}).join("");
+  const P=R.pkw;
+  if(P&&P.differs&&P.reasons&&P.reasons.length){
+    const why=`<ul class="rc-why">${P.reasons.slice(0,4).map(x=>`<li>${esc(x.text)}</li>`).join("")}</ul>`;
+    h+=`<div class="rcard bad"><div class="rc-top"><span class="rc-lab bad">Nicht für Gespann</span><span class="rc-lab">Pkw-Route</span></div>
+      <div class="rc-main"><b>${fmtDur(P.time)}</b><span>${fmtKm(P.len*1000)}</span></div>
+      <div class="rc-sub">Die normale Auto-Route (gestrichelt) ist für dein Gespann nicht geeignet:</div>${why}</div>`;
+  }
+  box.innerHTML=h;
+  box.querySelectorAll(".rcard[data-k]").forEach(b=>b.onclick=()=>selectRoute(+b.dataset.k));
+  if(!C.every(c=>c.fuel)&&C.length>1)box.insertAdjacentHTML("beforeend",`<p class="note">„Spritsparend“ erscheint, sobald der Verbrauch aller Routen berechnet ist.</p>`);
+  else if(C.every(c=>c.fuel))box.insertAdjacentHTML("beforeend",`<p class="note">Verbrauch ist eine Schätzung für dein Gespann (${G.fuel==="benzin"?"Benzin":"Diesel"}, ${G.preis?G.preis.toFixed(2).replace(".",",")+" €/l":"ohne Preis"}). Ändern im Reiter „Gespann“.</p>`);
+}
+function selectRoute(k){
+  const C=R?.cands;if(!C||SIM.on)return;const c=C[k];if(!c||c===R)return;
+  c.stops=c.stops||R.stops; R=c;
+  drawRoute(false); renderResult();
+  if(R.profile)showProfile(); else loadGrades(R).catch(()=>{});
+  if(R.stops)map.getSource("pois").setData({type:"FeatureCollection",features:R.stops.all.map(x=>({type:"Feature",geometry:{type:"Point",coordinates:[x.lon,x.lat]},properties:{id:x.id,kind:x.kind,name:x.name,rank:1}}))});
+  if(R.traffic)drawTraffic(R); else loadTraffic(R).catch(()=>{});
+  if(R.hazards)drawHazards(); else checkHazards(R);
+  fitRoute();
+}
+
+/* ---------- Engstellen: Höhe, Breite, Länge, Gewicht, Anhängerverbot (OpenStreetMap) ---------- */
+const parseM=v=>{if(!v)return null;v=String(v).trim().toLowerCase();if(/default|none|unsigned|no/.test(v))return null;const ft=/^(\d+)'\s*(\d+)?/.exec(v);if(ft)return (+ft[1]*12+(+ft[2]||0))*0.0254;const x=parseFloat(v.replace(",","."));return isFinite(x)&&x>0&&x<20?x:null};
+const parseT=v=>{if(!v)return null;v=String(v).trim().toLowerCase();if(/default|none|unsigned|no/.test(v))return null;const x=parseFloat(v.replace(",","."));if(!isFinite(x)||x<=0)return null;return /kg/.test(v)?x/1000:/lb/.test(v)?x*0.000453:x};
+function hazardFrom(t){
+  const g=gesamt(),out=[];
+  const h=parseM(t["maxheight:physical"])??parseM(t.maxheight),w=parseM(t["maxwidth:physical"])??parseM(t.maxwidth),L=parseM(t.maxlength),wt=parseT(t.maxweight)??parseT(t.maxweightrating);
+  const n=v=>v.toFixed(2).replace(".",",");
+  if(h!=null){if(h<g.hoehe)out.push({sev:2,sign:`${n(h)} m`,text:`Durchfahrtshöhe ${n(h)} m, dein Gespann ist ${n(g.hoehe)} m hoch`});else if(h<g.hoehe+0.3)out.push({sev:1,sign:`${n(h)} m`,text:`Durchfahrtshöhe ${n(h)} m, nur ${Math.round((h-g.hoehe)*100)} cm Luft`})}
+  if(w!=null){if(w<g.breite)out.push({sev:2,sign:`↔${n(w)}`,text:`Durchfahrtsbreite ${n(w)} m, dein Gespann ist ${n(g.breite)} m breit`});else if(w<g.breite+0.3)out.push({sev:1,sign:`↔${n(w)}`,text:`Durchfahrtsbreite ${n(w)} m, nur ${Math.round((w-g.breite)*100)} cm Platz`})}
+  if(L!=null&&L<g.laenge)out.push({sev:2,sign:`${n(L)} m`,text:`Längenbegrenzung ${n(L)} m, dein Gespann ist ${n(g.laenge)} m lang`});
+  if(wt!=null&&wt<g.zgm/1000)out.push({sev:2,sign:`${wt.toString().replace(".",",")} t`,text:`Gewichtsgrenze ${wt.toString().replace(".",",")} t, dein Gespann bis ${(g.zgm/1000).toFixed(1).replace(".",",")} t`});
+  if(t.trailer==="no"||t.caravan==="no")out.push({sev:2,sign:"Anh.",text:"Verbot für Fahrzeuge mit Anhänger"});
+  return out;
+}
+function hazQuery(lines,rad){
+  const parts=[],K='^(maxheight|maxheight:physical|maxwidth|maxwidth:physical|maxlength|maxweight|maxweightrating)$';
+  for(const c of lines){let x0=180,y0=90,x1=-180,y1=-90;for(const [x,y] of c){x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)}
+    const bb=`${(y0-0.01).toFixed(4)},${(x0-0.01).toFixed(4)},${(y1+0.01).toFixed(4)},${(x1+0.01).toFixed(4)}`,ll=c.map(([x,y])=>`${y.toFixed(5)},${x.toFixed(5)}`).join(",");
+    parts.push(`way[~"${K}"~"."](${bb})(around:${rad},${ll});`,`node[~"${K}"~"."](${bb})(around:${rad},${ll});`,`way[~"^(trailer|caravan)$"~"^no$"](${bb})(around:${rad},${ll});`)}
+  return `[out:json][timeout:25];(${parts.join("")});out center tags;`;
+}
+function chunkLines(pts,eps,size){const sp=simplify(pts,eps),out=[];for(let i=0;i<sp.length-1;i+=size)out.push(sp.slice(i,i+size+1));return out}
+async function checkHazards(RR){
+  RR.hazards=null;
+  const els=await overpass(hazQuery(chunkLines(RR.pts,10,60),8));
+  if(!els){RR.hazards={err:true,list:[]};if(RR===R)renderHazards();return}
+  const list=[],seen=new Set();
+  for(const e of els){const lat=e.lat??e.center?.lat,lon=e.lon??e.center?.lon;if(lat==null)continue;
+    const pr=projectFast(RR,lon,lat);if(pr.lat>15)continue;
+    for(const hz of hazardFrom(e.tags||{})){const key=hz.text+"|"+Math.round(pr.s/200);if(seen.has(key))continue;seen.add(key);
+      list.push(Object.assign(hz,{s:pr.s,pt:[lon,lat],name:e.tags?.name||e.tags?.ref||""}))}}
+  list.sort((a,b)=>a.s-b.s);
+  RR.hazards={list};
+  if(RR===R){renderHazards();drawHazards()}
+}
+async function checkPkw(RR){
+  const P=RR.pkw;if(!P||P.checked||P.checking)return;P.checking=true;
+  // Abschnitte der Pkw-Route, die nicht auf der Gespann-Route liegen
+  const M=P.model,segs=[];let cur=null;
+  for(let i=0;i<M.n;i+=2){const far=projectFast(RR,M.pts[i][0],M.pts[i][1]).lat>40;if(far){if(!cur){cur=[];segs.push(cur)}cur.push(M.pts[i])}else cur=null}
+  const lines=segs.filter(sg=>sg.length>1).flatMap(sg=>chunkLines(sg,10,60));
+  P.differs=lines.length>0&&(Math.abs(P.len*1000-RR.len)>300||segs.reduce((a,sg)=>a+sg.length,0)>8);
+  renderRouteCards();
+
+  if(!P.differs){P.checked=true;return}
+  const els=lines.length?await overpass(hazQuery(lines.slice(0,40),8)):[];
+  const reasons=[],seen=new Set();
+  for(const e of els||[]){const lat=e.lat??e.center?.lat,lon=e.lon??e.center?.lon;if(lat==null)continue;
+    const pr=projectFast(M,lon,lat);if(pr.lat>15)continue;
+    for(const hz of hazardFrom(e.tags||{}))if(hz.sev===2&&!seen.has(hz.text)){seen.add(hz.text);reasons.push(Object.assign(hz,{s:pr.s,pt:[lon,lat]}))}}
+  P.reasons=reasons;P.checked=true;
+  if(reasons.length&&RR===R)map.getSource("pkw").setData({type:"FeatureCollection",features:[{type:"Feature",geometry:{type:"LineString",coordinates:P.shape},properties:{}}]});
+  renderRouteCards();drawHazards();
+}
+function hazImage(){
+  const s=56,c=document.createElement("canvas");c.width=c.height=s;const x=c.getContext("2d");
+  x.fillStyle="#fff";x.beginPath();x.arc(28,28,25,0,7);x.fill();x.strokeStyle="#d0261d";x.lineWidth=6;x.stroke();
+  return {width:s,height:s,data:new Uint8Array(x.getImageData(0,0,s,s).data.buffer)};
+}
+function drawHazards(){
+  if(!map.getSource("haz"))return;
+  const f=[];
+  (R.hazards?.list||[]).forEach((h,i)=>f.push({type:"Feature",geometry:{type:"Point",coordinates:h.pt},properties:{t:h.sign.replace(" m","").replace("↔",""),src:"r",i}}));
+  if(R.pkw?.differs)(R.pkw.reasons||[]).forEach((h,i)=>f.push({type:"Feature",geometry:{type:"Point",coordinates:h.pt},properties:{t:h.sign.replace(" m","").replace("↔",""),src:"p",i}}));
+  map.getSource("haz").setData({type:"FeatureCollection",features:f});
+}
+function openHaz(src,i){
+  const h=src==="p"?R.pkw?.reasons?.[i]:R.hazards?.list?.[i];if(!h)return;
+  const html=`<div class="pop"><b>${h.sev===2?"Nicht passierbar":"Engstelle"}${src==="p"?" (Pkw-Route)":""}</b><div class="sub">${esc(h.text)}${h.name?` · ${esc(h.name)}`:""}</div>
+    ${src==="r"?`<div class="sub">auf deiner Route bei km ${Math.round(h.s/1000)}</div>`:`<div class="sub">Darum fährt deine Gespann-Route hier nicht entlang.</div>`}
+    ${src==="r"&&h.sev===2?`<div class="row"><button class="btn primary small" data-act="avoid">Umfahren</button></div>`:""}</div>`;
+  popup?.remove();popup=new maplibregl.Popup({maxWidth:"300px",offset:16}).setLngLat(h.pt).setHTML(html).addTo(map);
+  const b=popup.getElement().querySelector("[data-act=avoid]");if(b)b.onclick=()=>{popup.remove();AVOID.push({label:h.text,ring:bufferRing(Math.max(0,h.s-120),Math.min(R.len,h.s+120),30)});if(SIM.on&&SIM.mode==="gps"){const p=posAt(SIM.target);reroute(p[0],p[1])}else calcRoute()};
+}
+function renderHazards(){
+  const box=$("#hazBox");if(!box||!R)return;const H=R.hazards;
+  if(!H){box.hidden=false;box.innerHTML=`<h2>Engstellen auf der Route</h2><p class="note">Brücken, Unterführungen und Gewichtsgrenzen werden geprüft …</p>`;return}
+  if(H.err){box.hidden=false;box.innerHTML=`<h2>Engstellen auf der Route</h2><p class="note">Prüfung gerade nicht möglich. Die Route meidet trotzdem alle eingetragenen Sperren für dein Gespann.</p>`;return}
+  box.hidden=false;
+  box.innerHTML=`<h2>Engstellen auf der Route</h2>${H.list.length?`<ul class="haz">${H.list.map((h,i)=>`<li class="${h.sev===2?"bad":""}" data-i="${i}"><span class="hsign">${esc(h.sign)}</span><span>${h.sev===2?"<b>Achtung, nicht passierbar:</b> ":""}${esc(h.text)}${h.name?` · ${esc(h.name)}`:""}</span><span class="note">km ${Math.round(h.s/1000)}</span></li>`).join("")}</ul>`
+    :`<p class="note">Keine knappen Durchfahrtshöhen oder -breiten (unter ${fmtM(gesamt().hoehe+0.3)} bzw. ${fmtM(gesamt().breite+0.3)}) auf dieser Route eingetragen.</p>`}`;
+  box.querySelectorAll(".haz li").forEach(li=>li.onclick=()=>{const h=H.list[+li.dataset.i];openHaz("r",+li.dataset.i);if(SIM.on)SIM.userHold=performance.now()+8000;map.flyTo({center:h.pt,zoom:15,duration:800});if(isMobile())collapseSheet(true)});
 }
 function sliceRoute(s0,s1){const a=idxAt(s0),b=idxAt(s1);return [posAt(s0),...R.pts.slice(a+1,b+1),posAt(s1)]}
 function renderGrades(){
@@ -1041,15 +1243,20 @@ async function loadTraffic(RR,quiet){
   items.sort((x,y)=>x.s0-y.s0);items.forEach((x,i)=>x.id=i);
   const old=RR.traffic;
   RR.traffic={roads,items,t:Date.now(),errs:errs===jobs.length};
-  map.getSource("traffic").setData({type:"FeatureCollection",features:[
-    ...items.filter(x=>x.geom).map(x=>({type:"Feature",geometry:{type:"LineString",coordinates:x.geom},properties:{id:x.id,k:x.k,sev:x.sev}})),
-    ...items.map(x=>({type:"Feature",geometry:{type:"Point",coordinates:x.pt},properties:{id:x.id,k:x.k,sev:x.sev}}))]});
+  if(RR!==R)return;
+  drawTraffic(RR);
   renderTraffic();
   if(old&&old.items&&SIM.on&&SIM.voice){
     const known=new Set(old.items.map(x=>x.idf));
     const nw=items.find(x=>x.sev>=2&&x.s0>SIM.s&&x.s0-SIM.s<60000&&!known.has(x.idf));
     if(nw)speak(`Neue Verkehrsmeldung: ${nw.label} auf der ${nw.road.replace("A","A ")} in ${spokenDist(nw.s0-SIM.s)}.${nw.delay?` Etwa ${Math.round(nw.delay/60)} Minuten Verzögerung.`:""}`);
   }
+}
+function drawTraffic(RR){
+  const items=RR.traffic.items;
+  map.getSource("traffic").setData({type:"FeatureCollection",features:[
+    ...items.filter(x=>x.geom).map(x=>({type:"Feature",geometry:{type:"LineString",coordinates:x.geom},properties:{id:x.id,k:x.k,sev:x.sev}})),
+    ...items.map(x=>({type:"Feature",geometry:{type:"Point",coordinates:x.pt},properties:{id:x.id,k:x.k,sev:x.sev}}))]});
 }
 const trafficDelay=s=>(R?.traffic?.items||[]).filter(x=>x.s1>s).reduce((a,x)=>a+x.delay,0);
 function trafficIcon(k,size=28){
@@ -1331,6 +1538,11 @@ function updateHud(s){
     const key="t"+tx.idf;
     if(talk&&!inside&&tx.s0-s<(tx.k==="bau"?1200:3000)&&!SIM.said[key]){SIM.said[key]=1;setTimeout(()=>speak(`Achtung, ${tx.label} in ${spokenDist(tx.s0-s)}.${tx.delay?` Etwa ${Math.round(tx.delay/60)} Minuten Verzögerung.`:""}${tx.k==="bau"&&wide?" Bitte rechts bleiben.":""}`),1800)}
   } else tb.hidden=true;
+  // Engstelle voraus
+  const hb=$("#hHaz"),hz=(R.hazards?.list||[]).find(h=>h.s>s-20&&h.s-s<1500);
+  if(hz){hb.hidden=false;hb.className="wbanner"+(hz.sev===2?" s2":"");hb.innerHTML=`<span class="hsign">${esc(hz.sign)}</span><div><b>${hz.sev===2?"Achtung":"Engstelle"} ${hz.s>s?`in ${fmtKm(hz.s-s)}`:"jetzt"}</b>${esc(hz.text)}</div>`;
+    const key="h"+Math.round(hz.s);if(talk&&hz.s>s&&!SIM.said[key]){SIM.said[key]=1;setTimeout(()=>speak(`Achtung, in ${spokenDist(hz.s-s)} ${hz.text.split(",")[0]}.`),900)}}
+  else hb.hidden=true;
   // Nächster Rastplatz
   const nr=R.stops?.rast.find(x=>x.s>s+200);
   $("#hNext").innerHTML=nr?`Nächster Rastplatz: <b>${esc(nr.name)}</b> in ${fmtKm(nr.s-s)}`:"";
@@ -1360,7 +1572,7 @@ $("#addVia").onclick=()=>{if(WPS.length>=6)return;WPS.splice(WPS.length-1,0,null
 $("#swap").onclick=()=>{WPS.reverse();renderWps();updateMarkers();markRouteStale()};
 ["optToll","optFerry","optHwy"].forEach(id=>$("#"+id).onchange=markRouteStale);
 $("#depart").onchange=()=>{if(R)renderResult()};
-FIELDS.concat(["fs","tempo100"]).forEach(id=>$("#"+id).addEventListener("change",readGespannForm));
+FIELDS.concat(["fs","tempo100","fuel","preis"]).forEach(id=>$("#"+id).addEventListener("change",readGespannForm));
 $("#resetG").onclick=()=>{G=structuredClone(DEFAULT_G);store.set("gespann",G);fillGespannForm();renderGespann();markRouteStale()};
 $("#sPlay").onclick=()=>{if(SIM.s>=R.len){seekTo(0)}SIM.run=!SIM.run;SIM.last=performance.now();updatePlayBtn();$("#arrived").hidden=true};
 $("#sMult").onchange=e=>{SIM.mult=+e.target.value};
