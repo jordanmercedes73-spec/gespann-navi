@@ -287,7 +287,7 @@ body:not(.gps) .gpsonly{display:none!important}
         <div class="brand-mark" aria-hidden="true">
           <svg width="28" height="19" viewBox="0 0 26 18"><rect x="1" y="5" width="8" height="8" rx="1.5" fill="#140b04"/><rect x="11" y="2" width="14" height="11" rx="2" fill="#140b04"/><line x1="9" y1="11" x2="11" y2="11" stroke="#140b04" stroke-width="1.6"/><circle cx="4" cy="14.5" r="2.2" fill="#140b04" stroke="#d9772f" stroke-width="1"/><circle cx="18" cy="14.5" r="2.2" fill="#140b04" stroke="#d9772f" stroke-width="1"/></svg>
         </div>
-        <div><h1>Gespann<span>-Navi</span></h1><small>Routen für Pkw mit Wohnwagen · <span id="appVersion">Version 9</span></small></div>
+        <div><h1>Gespann<span>-Navi</span></h1><small>Routen für Pkw mit Wohnwagen · <span id="appVersion">Version 10</span></small></div>
         <button id="sheetToggle" aria-label="Planung ein- oder ausklappen"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 15l6-6 6 6"/></svg></button>
       </div>
       <div class="tabs" role="tablist">
@@ -369,9 +369,16 @@ body:not(.gps) .gpsonly{display:none!important}
         <div class="grid2">
           <label class="f"><span class="lab">Kraftstoff</span>
             <select class="inp" id="fuel"><option value="diesel">Diesel</option><option value="benzin">Benzin</option></select></label>
-          <label class="f"><span class="lab">Preis pro Liter</span><div class="unit"><input class="inp" type="number" step="0.01" id="preis"><span>€</span></div></label>
+          <label class="f"><span class="lab">Preis pro Liter</span><div class="unit"><input class="inp" type="number" step="0.001" id="preis"><span>€</span></div></label>
         </div>
-        <p class="note" style="margin-top:6px">Für die Verbrauchsschätzung der Routen. Gerechnet wird mit Gewicht, Stirnfläche, Tempo und Steigungen des Gespanns.</p>
+        <label class="check" style="margin-top:10px"><input type="checkbox" id="preisAuto"> Preis automatisch aktuell halten</label>
+        <p class="note" id="preisInfo" style="margin-top:6px"></p>
+        <button class="linkbtn" id="preisNow" style="margin-top:6px">Preis jetzt aktualisieren</button>
+        <div id="tkBox" style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
+          <label class="f"><span class="lab">Tankerkönig-Schlüssel für Preise in Deutschland</span><input class="inp" id="tkKey" autocomplete="off" spellcheck="false" placeholder="z. B. 1a2b3c4d-…"></label>
+          <p class="note">Kostenlos bei <a href="https://creativecommons.tankerkoenig.de/" target="_blank" rel="noopener">creativecommons.tankerkoenig.de</a> unter „API-Key“ beantragen und hier einfügen. Der Schlüssel bleibt nur auf diesem Handy. In Österreich geht es ohne Schlüssel.</p>
+        </div>
+        <p class="note" style="margin-top:6px">Gerechnet wird mit dem Durchschnittspreis der offenen Tankstellen am Start der Route. Der Verbrauch berücksichtigt Gewicht, Stirnfläche, Tempo und Steigungen des Gespanns.</p>
       </div>
       <div class="group">
         <h2>Gespann-Check</h2>
@@ -460,7 +467,7 @@ const store = {
 };
 let G = structuredClone(store.get("gespann",DEFAULT_G));
 G.zug = Object.assign({},DEFAULT_G.zug,G.zug); G.ww = Object.assign({},DEFAULT_G.ww,G.ww);
-if(!G.fuel)G.fuel="diesel"; if(!(G.preis>0))G.preis=1.75;
+if(!G.fuel)G.fuel="diesel"; if(!(G.preis>0))G.preis=1.75; if(G.preisAuto===undefined)G.preisAuto=true;
 let WPS = [null,null];   // Start und Ziel sind beim Öffnen leer
 let R = null;          // Routenmodell
 let pickIdx = null;    // Wegpunkt, der per Karte gesetzt wird
@@ -532,13 +539,18 @@ const pct=g=>(Math.round(Math.abs(g)*10)/10).toString().replace(".",",")+" %";
 const FIELDS = ["zug_name","zug_laenge","zug_breite","zug_hoehe","zug_radstand","zug_zgm","zug_leer","zug_anhaengelast","ww_name","ww_laenge","ww_breite","ww_hoehe","ww_zgm"];
 function fillGespannForm(){
   for(const id of FIELDS){const [o,k]=id.split("_");$("#"+id).value=G[o][k]}
-  $("#fs").value=G.fs; $("#tempo100").checked=G.tempo100; $("#fuel").value=G.fuel; $("#preis").value=G.preis;
+  $("#fs").value=G.fs; $("#tempo100").checked=G.tempo100; $("#fuel").value=G.fuel; $("#preis").value=G.preis; $("#preisAuto").checked=G.preisAuto; $("#tkKey").value=store.get("tkKey","");
+  renderPriceInfo();
 }
-function readGespannForm(){
+function readGespannForm(ev){
+  const tid=ev&&ev.target?ev.target.id:"";
   for(const id of FIELDS){const [o,k]=id.split("_");const v=$("#"+id).value;G[o][k]=k==="name"?v:(parseFloat(v)||0)}
-  G.fs=$("#fs").value; G.tempo100=$("#tempo100").checked; G.fuel=$("#fuel").value; G.preis=parseFloat($("#preis").value)||0;
+  G.fs=$("#fs").value; G.tempo100=$("#tempo100").checked; const oldFuel=G.fuel; G.fuel=$("#fuel").value; const typed=tid==="preis";
+  G.preis=parseFloat($("#preis").value)||0; G.preisAuto=$("#preisAuto").checked;
+  if(typed){G.preisAuto=false;$("#preisAuto").checked=false;G.preisInfo=null;renderPriceInfo()}
+  if(G.preisAuto&&(oldFuel!==G.fuel||tid==="preisAuto"))updatePrice(true);
   store.set("gespann",G); renderGespann();
-  if(R&&R.cands&&document.activeElement&&/^(fuel|preis)$/.test(document.activeElement.id)){R.cands.forEach(c=>{if(c.profile)c.fuel=fuelEstimate(c)});renderRouteCards()} else markRouteStale();
+  if(R&&R.cands&&/^(fuel|preis|preisAuto)$/.test(tid)){R.cands.forEach(c=>{if(c.profile)c.fuel=fuelEstimate(c)});renderRouteCards()} else markRouteStale();
 }
 function renderGespann(){ renderSideview(); renderChecks(); }
 
@@ -776,6 +788,7 @@ async function calcRoute(opt={}){
     if(isMobile()&&!opt.keepNav)collapseSheet(false);
     enrich(R);
     loadOtherProfiles(cands);
+    updatePrice(false);
     return true;
   }catch(e){ setStatus(e.message==="Failed to fetch"?"Routing-Server nicht erreichbar. Internetverbindung prüfen und erneut versuchen.":e.message,true); return false }
   finally{$("#calc").disabled=false}
@@ -954,6 +967,59 @@ function fuelEstimate(RR){
   const l=E/(eta*lhv)+aux*RR.time/3600;
   return {l,per100:l/(RR.len/1e5),eur:l*(G.preis||0)};
 }
+/* ---------- Aktuelle Kraftstoffpreise: Deutschland (Tankerkönig/MTS-K), Österreich (E-Control) ---------- */
+const median=a=>{a=a.slice().sort((x,y)=>x-y);const n=a.length;return n?(n%2?a[(n-1)/2]:(a[n/2-1]+a[n/2])/2):null};
+let priceBusy=false,priceCache={};
+async function fetchPrice(lat,lon){
+  const cc=countryAt(lon,lat),diesel=G.fuel!=="benzin";
+  const key=`${cc}|${G.fuel}|${lat.toFixed(2)}|${lon.toFixed(2)}`;
+  if(priceCache[key]&&Date.now()-priceCache[key].t<10*60*1000)return priceCache[key];
+  let res=null;
+  if(cc==="DE"){
+    const k=store.get("tkKey","");
+    if(!/^[0-9a-f-]{36}$/i.test(k))return {err:"key",cc};
+    for(const rad of [5,15]){
+      const j=await (await fetch(`https://creativecommons.tankerkoenig.de/json/list.php?lat=${lat.toFixed(5)}&lng=${lon.toFixed(5)}&rad=${rad}&sort=dist&type=${diesel?"diesel":"e5"}&apikey=${encodeURIComponent(k)}`)).json();
+      if(!j.ok)return {err:/apikey/i.test(j.message||"")?"badkey":"api",cc,msg:j.message};
+      const pr=(j.stations||[]).filter(x=>x.isOpen!==false&&x.price>0).map(x=>x.price);
+      if(pr.length>=3||rad===15){if(pr.length)res={price:median(pr),min:Math.min(...pr),n:pr.length,src:"Tankerkönig (MTS-K)",place:(j.stations[0]||{}).place||""};break}
+    }
+  } else if(cc==="AT"){
+    const j=await (await fetch(`https://api.e-control.at/sprit/1.0/search/gas-stations/by-address?latitude=${lat.toFixed(5)}&longitude=${lon.toFixed(5)}&fuelType=${diesel?"DIE":"SUP"}&includeClosed=false`)).json();
+    const pr=(Array.isArray(j)?j:[]).flatMap(x=>(x.prices||[]).map(p=>p.amount)).filter(x=>x>0);
+    if(pr.length)res={price:median(pr),min:Math.min(...pr),n:pr.length,src:"E-Control",place:(j[0]?.location?.city)||""};
+  } else return {err:"country",cc};
+  if(!res)return {err:"none",cc};
+  res.t=Date.now();res.cc=cc;priceCache[key]=res;return res;
+}
+async function updatePrice(force,useGps){
+  if(!G.preisAuto&&!force)return; if(priceBusy)return; priceBusy=true;
+  const info=$("#preisInfo");
+  try{
+    let lat,lon;
+    if(useGps){try{const p=await getPos({timeout:8000,maximumAge:60000});lat=p.coords.latitude;lon=p.coords.longitude}catch(e){}}
+    if(lat==null&&SIM.on&&SIM.mode==="gps"&&R){const q=posAt(SIM.target);lon=q[0];lat=q[1]}
+    if(lat==null&&WPS[0]){lat=WPS[0].lat;lon=WPS[0].lon}
+    if(lat==null&&map){const c=map.getCenter();lat=c.lat;lon=c.lng}
+    if(info)info.textContent="Aktueller Preis wird abgefragt …";
+    const r=await fetchPrice(lat,lon);
+    if(r.err){G.preisInfo={err:r.err,cc:r.cc,msg:r.msg};}
+    else{G.preis=Math.round(r.price*1000)/1000;G.preisAuto=true;G.preisInfo={src:r.src,t:r.t,n:r.n,min:r.min,place:r.place,cc:r.cc};$("#preis").value=G.preis;$("#preisAuto").checked=true}
+    store.set("gespann",G);
+    if(R&&R.cands){R.cands.forEach(c=>{if(c.profile)c.fuel=fuelEstimate(c)});renderRouteCards()}
+  }catch(e){G.preisInfo={err:"net"}}
+  finally{priceBusy=false;renderPriceInfo()}
+}
+function renderPriceInfo(){
+  const el=$("#preisInfo");if(!el)return;const I=G.preisInfo,f=G.fuel==="benzin"?"Super":"Diesel";
+  if(!G.preisAuto){el.textContent="Preis wird von Hand eingetragen.";return}
+  if(!I){el.textContent="Der Preis wird beim nächsten Routenberechnen aktualisiert.";return}
+  const msg={key:"Für Preise in Deutschland bitte unten den kostenlosen Tankerkönig-Schlüssel eintragen. Bis dahin gilt der eingetragene Preis.",
+    badkey:"Der Tankerkönig-Schlüssel wurde nicht angenommen. Bitte prüfen.",country:`Für ${CC_NAME[I.cc]||"dieses Land"} gibt es keine freien Preisdaten. Es gilt der eingetragene Preis.`,
+    none:"Keine offene Tankstelle mit Preis in der Nähe gefunden.",api:"Preisdienst meldet einen Fehler: "+(I.msg||""),net:"Preisdienst gerade nicht erreichbar. Es gilt der zuletzt bekannte Preis."}[I.err];
+  if(msg){el.textContent=msg;return}
+  el.innerHTML=`<b style="color:var(--ink)">${f}: ${G.preis.toFixed(3).replace(".",",")} €</b> · Durchschnitt von ${I.n} Tankstellen${I.place?` bei ${esc(I.place)}`:""} (günstigste ${I.min.toFixed(3).replace(".",",")} €) · Stand ${fmtClock(new Date(I.t))} · Quelle: ${esc(I.src)}`;
+}
 function viaNames(RR){
   const tot={};for(const m of RR.mans){const n=(m.street_names||[]).find(x=>/^(A|E|B|SS|SR|S|D|R|H)\s?\d/.test(x));if(n)tot[n.replace(/\s+/g," ")]=(tot[n.replace(/\s+/g," ")]||0)+m.length}
   let e=Object.entries(tot).sort((a,b)=>b[1]-a[1]);const nat=e.filter(x=>!/^E \d/.test(x[0]));if(nat.length>=2)e=nat;
@@ -984,7 +1050,8 @@ function renderRouteCards(){
   box.innerHTML=h;
   box.querySelectorAll(".rcard[data-k]").forEach(b=>b.onclick=()=>selectRoute(+b.dataset.k));
   if(!C.every(c=>c.fuel)&&C.length>1)box.insertAdjacentHTML("beforeend",`<p class="note">„Spritsparend“ erscheint, sobald der Verbrauch aller Routen berechnet ist.</p>`);
-  else if(C.every(c=>c.fuel))box.insertAdjacentHTML("beforeend",`<p class="note">Verbrauch ist eine Schätzung für dein Gespann (${G.fuel==="benzin"?"Benzin":"Diesel"}, ${G.preis?G.preis.toFixed(2).replace(".",",")+" €/l":"ohne Preis"}). Ändern im Reiter „Gespann“.</p>`);
+  else if(C.every(c=>c.fuel)){const I=G.preisInfo,live=G.preisAuto&&I&&!I.err;
+    box.insertAdjacentHTML("beforeend",`<p class="note">Verbrauch ist eine Schätzung für dein Gespann. ${G.fuel==="benzin"?"Super":"Diesel"} ${G.preis?G.preis.toFixed(3).replace(".",",")+" €/l":"ohne Preis"}${live?` (aktuell, Stand ${fmtClock(new Date(I.t))}${I.place?", "+esc(I.place):""})`:" (von Hand eingetragen)"}. Einstellen im Reiter „Gespann“.</p>`)}
 }
 function selectRoute(k){
   const C=R?.cands;if(!C||SIM.on)return;const c=C[k];if(!c||c===R)return;
@@ -1377,6 +1444,7 @@ async function startNav(){
   }
   setStatus("");
   beginDrive("gps",m.s);
+  setTimeout(()=>updatePrice(false),3000);
   onFix(p);
   SIM.watch=navigator.geolocation.watchPosition(onFix,e=>{$("#hGps").textContent=geoErr(e)},{enableHighAccuracy:true,maximumAge:1000,timeout:30000});
   requestWake();
@@ -1572,7 +1640,9 @@ $("#addVia").onclick=()=>{if(WPS.length>=6)return;WPS.splice(WPS.length-1,0,null
 $("#swap").onclick=()=>{WPS.reverse();renderWps();updateMarkers();markRouteStale()};
 ["optToll","optFerry","optHwy"].forEach(id=>$("#"+id).onchange=markRouteStale);
 $("#depart").onchange=()=>{if(R)renderResult()};
-FIELDS.concat(["fs","tempo100","fuel","preis"]).forEach(id=>$("#"+id).addEventListener("change",readGespannForm));
+$("#tkKey").addEventListener("change",()=>{store.set("tkKey",$("#tkKey").value.trim());if(G.preisAuto)updatePrice(true)});
+$("#preisNow").onclick=()=>updatePrice(true,true);
+FIELDS.concat(["fs","tempo100","fuel","preis","preisAuto"]).forEach(id=>$("#"+id).addEventListener("change",readGespannForm));
 $("#resetG").onclick=()=>{G=structuredClone(DEFAULT_G);store.set("gespann",G);fillGespannForm();renderGespann();markRouteStale()};
 $("#sPlay").onclick=()=>{if(SIM.s>=R.len){seekTo(0)}SIM.run=!SIM.run;SIM.last=performance.now();updatePlayBtn();$("#arrived").hidden=true};
 $("#sMult").onchange=e=>{SIM.mult=+e.target.value};
