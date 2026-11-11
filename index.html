@@ -233,6 +233,16 @@ body:not(.gps) .gpsonly{display:none!important}
 .haz li{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;cursor:pointer;background:var(--raise)}
 .haz li.bad{border-color:rgba(255,90,79,.55)}
 .hsign{width:34px;height:34px;border-radius:50%;background:#fff;border:4px solid #d0261d;display:grid;place-items:center;font:700 11px/1 var(--f-display);color:#111;flex:none;text-align:center}
+/* Favoriten */
+.flist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.flist li{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--raise);cursor:pointer}
+.flist li:hover{border-color:var(--sign)}
+.flist .nm{font-weight:600;font-size:14px}
+.flist .sub{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.flist .del{background:none;border:0;color:var(--muted);font-size:20px;padding:2px 8px;cursor:pointer}
+.star{color:var(--sign);font-size:18px}
+.savebar{display:flex;gap:8px;flex-wrap:wrap}
+.savebar .inp{flex:1 1 160px}
 /* Verkehrslage */
 .tlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .tlist li{display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:start;padding:8px 10px;border:1px solid var(--line);border-radius:8px;cursor:pointer;font-size:13.5px}
@@ -287,7 +297,7 @@ body:not(.gps) .gpsonly{display:none!important}
         <div class="brand-mark" aria-hidden="true">
           <svg width="28" height="19" viewBox="0 0 26 18"><rect x="1" y="5" width="8" height="8" rx="1.5" fill="#140b04"/><rect x="11" y="2" width="14" height="11" rx="2" fill="#140b04"/><line x1="9" y1="11" x2="11" y2="11" stroke="#140b04" stroke-width="1.6"/><circle cx="4" cy="14.5" r="2.2" fill="#140b04" stroke="#d9772f" stroke-width="1"/><circle cx="18" cy="14.5" r="2.2" fill="#140b04" stroke="#d9772f" stroke-width="1"/></svg>
         </div>
-        <div><h1>Gespann<span>-Navi</span></h1><small>Routen für Pkw mit Wohnwagen · <span id="appVersion">Version 12</span></small></div>
+        <div><h1>Gespann<span>-Navi</span></h1><small>Routen für Pkw mit Wohnwagen · <span id="appVersion">Version 13</span></small></div>
         <button id="sheetToggle" aria-label="Planung ein- oder ausklappen"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 15l6-6 6 6"/></svg></button>
       </div>
       <div class="tabs" role="tablist">
@@ -306,6 +316,7 @@ body:not(.gps) .gpsonly{display:none!important}
           <button class="linkbtn" id="swap">Start und Ziel tauschen</button>
         </div>
       </div>
+      <div class="group" id="favBox" hidden></div>
       <div class="group">
         <h2>Beliebte Ziele</h2>
         <div class="chips" id="presets"></div>
@@ -788,6 +799,7 @@ async function calcRoute(opt={}){
     if(isMobile()&&!opt.keepNav)collapseSheet(false);
     enrich(R);
     loadOtherProfiles(cands);
+    if(!opt.keepNav)rememberRecent();
     updatePrice(false);
     return true;
   }catch(e){ setStatus(e.message==="Failed to fetch"?"Routing-Server nicht erreichbar. Internetverbindung prüfen und erneut versuchen.":e.message,true); return false }
@@ -874,6 +886,7 @@ function renderResult(){
   hints.push(`Die Route meidet Straßen mit eingetragener Durchfahrtshöhe unter ${fmtM(g.hoehe)}, Breite unter ${fmtM(g.breite)}, Länge unter ${fmtM(g.laenge)} und Gewichtsgrenzen unter ${(g.zgm/1000).toFixed(1).replace(".",",")} t. Nicht eingetragene Schilder kennt sie nicht.`);
 
   box.innerHTML=`
+    <div class="group" id="saveBox"></div>
     <div class="group"><h2>Routen für dein Gespann</h2><div class="rcards" id="routeCards"></div></div>
     <div class="sum">
       <div><div class="k">Strecke</div><div class="v">${fmtKm(R.len)}</div></div>
@@ -902,7 +915,7 @@ function renderResult(){
   $("#navStart").onclick=startNav;
   if(R.profile)renderGrades();
   renderTraffic(R.traffic?null:"loading");
-  renderRouteCards(); renderHazards();
+  renderRouteCards(); renderHazards(); renderSaveBox();
 }
 function flyToS(s){ if(SIM.on)SIM.userHold=performance.now()+6000; map.flyTo({center:posAt(s),zoom:15.5,pitch:40,duration:900}); }
 function departDate(){const v=$("#depart").value;const d=v?new Date(v):new Date();return isNaN(d)?new Date():d}
@@ -1025,6 +1038,33 @@ function renderPriceInfo(){
     nopos:"Standort unbekannt. Erlaube den Standort für die App oder gib im Reiter „Route“ einen Start ein, dann erneut tippen. "+(I.msg||""),none:"Keine offene Tankstelle mit Preis in der Nähe gefunden.",api:"Preisdienst meldet einen Fehler: "+(I.msg||""),net:"Preisdienst gerade nicht erreichbar. Es gilt der zuletzt bekannte Preis."}[I.err];
   if(msg){el.textContent=msg+(I.t?` (Abfrage ${fmtClock(new Date(I.t))})`:"");return}
   el.innerHTML=`<b style="color:var(--ink)">${f}: ${G.preis.toFixed(3).replace(".",",")} €</b> · Durchschnitt von ${I.n} Tankstellen${I.place?` bei ${esc(I.place)}`:""} (günstigste ${I.min.toFixed(3).replace(".",",")} €) · Stand ${fmtClock(new Date(I.t))} · Quelle: ${esc(I.src)}`;
+}
+/* ---------- Meine Strecken (nur auf diesem Gerät gespeichert) ---------- */
+const favs=()=>store.get("favs",[]), recents=()=>store.get("recents",[]);
+const wpsKey=w=>w.map(x=>x.lat.toFixed(4)+","+x.lon.toFixed(4)).join("|");
+const shortName=l=>String(l||"").split(",")[0];
+function favName(w){return w.map(x=>shortName(x.label)).join(" → ")}
+function rememberRecent(){
+  if(WPS.some(w=>!w))return;const w=WPS.map(x=>({label:x.label,lat:x.lat,lon:x.lon})),k=wpsKey(w);
+  const r=recents().filter(x=>wpsKey(x.w)!==k);r.unshift({w,t:Date.now()});store.set("recents",r.slice(0,5));renderFavs();
+}
+function loadFav(w){WPS=w.map(x=>({...x}));renderWps();updateMarkers();setStatus("");calcRoute()}
+function renderFavs(){
+  const box=$("#favBox");if(!box)return;const F=favs(),Rc=recents().filter(r=>!F.some(f=>wpsKey(f.w)===wpsKey(r.w)));
+  if(!F.length&&!Rc.length){box.hidden=true;return}
+  box.hidden=false;
+  const item=(x,i,kind)=>`<li data-kind="${kind}" data-i="${i}"><span class="star">${kind==="f"?"★":"↺"}</span><div style="min-width:0"><div class="nm">${esc(x.name||favName(x.w))}</div><div class="sub">${esc(x.w.map(y=>shortName(y.label)).join(" → "))}</div></div><button class="del" data-del="${kind}" data-i="${i}" aria-label="Entfernen">×</button></li>`;
+  box.innerHTML=`${F.length?`<h2>Meine Strecken</h2><ul class="flist">${F.map((x,i)=>item(x,i,"f")).join("")}</ul>`:""}
+    ${Rc.length?`<h2 style="margin-top:${F.length?14:0}px">Zuletzt berechnet</h2><ul class="flist">${Rc.map((x,i)=>item(x,i,"r")).join("")}</ul>`:""}`;
+  box.querySelectorAll("li").forEach(li=>li.onclick=e=>{const k=li.dataset.kind,i=+li.dataset.i;
+    if(e.target.closest("[data-del]")){e.stopPropagation();if(k==="f"){const f=favs();f.splice(i,1);store.set("favs",f)}else{const r=recents().filter(r=>!favs().some(f=>wpsKey(f.w)===wpsKey(r.w)));const all=recents().filter(x=>wpsKey(x.w)!==wpsKey(r[i].w));store.set("recents",all)}renderFavs();if(R)renderSaveBox();return}
+    loadFav(k==="f"?favs()[i].w:Rc[i].w)});
+}
+function renderSaveBox(){
+  const box=$("#saveBox");if(!box||WPS.some(w=>!w))return;const k=wpsKey(WPS),idx=favs().findIndex(f=>wpsKey(f.w)===k);
+  if(idx>=0){box.innerHTML=`<p class="note"><span class="star">★</span> Gespeichert als „${esc(favs()[idx].name)}“.</p>`;return}
+  box.innerHTML=`<div class="savebar"><input class="inp" id="favNameInp" placeholder="Name, z. B. Urlaub Rovinj" value="${esc(favName(WPS))}"><button class="btn ghost small" id="favSave">★ Strecke speichern</button></div>`;
+  $("#favSave").onclick=()=>{const f=favs();f.unshift({name:$("#favNameInp").value.trim()||favName(WPS),w:WPS.map(x=>({label:x.label,lat:x.lat,lon:x.lon}))});store.set("favs",f);renderFavs();renderSaveBox()};
 }
 function viaNames(RR){
   const tot={};for(const m of RR.mans){const n=(m.street_names||[]).find(x=>/^(A|E|B|SS|SR|S|D|R|H)\s?\d/.test(x));if(n)tot[n.replace(/\s+/g," ")]=(tot[n.replace(/\s+/g," ")]||0)+m.length}
@@ -1666,7 +1706,7 @@ document.addEventListener("keydown",e=>{if(!SIM.on||e.target.closest("input,sele
   const d=new Date();d.setMinutes(0,0,0);d.setHours(d.getHours()+1);
   const pad=n=>String(n).padStart(2,"0");
   $("#depart").value=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`;
-  fillGespannForm(); renderGespann(); renderWps(); renderPresets(); collapseSheet(false);
+  fillGespannForm(); renderGespann(); renderWps(); renderPresets(); renderFavs(); collapseSheet(false);
   if(typeof maplibregl==="undefined"){setStatus("Kartenbibliothek konnte nicht geladen werden. Internetverbindung prüfen.",true);return}
   initMap();
   // Updates: neue Version sofort übernehmen und die Seite einmal neu laden
